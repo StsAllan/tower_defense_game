@@ -499,12 +499,14 @@ def main():
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
-        if TEXTURES.get('background'): draw_sprite(TEXTURES['background'], WINDOW_WIDTH/2, GAME_HEIGHT/2, WINDOW_WIDTH, GAME_HEIGHT)
+        if TEXTURES.get('background'): 
+            draw_sprite(TEXTURES['background'], WINDOW_WIDTH/2, GAME_HEIGHT/2, WINDOW_WIDTH, GAME_HEIGHT)
         else: glColor3f(0.1, 0.1, 0.1); draw_rect(0, 0, WINDOW_WIDTH, GAME_HEIGHT)
-        glColor3f(0.3, 0.3, 0.3); glLineWidth(40)
-        glBegin(GL_LINE_STRIP); 
-        for p in PATH: glVertex2f(*p)
-        glEnd()
+        # Desenha o caminho (opcional) apenas para visualização
+        #glColor3f(0.3, 0.3, 0.3); glLineWidth(40)
+        #glBegin(GL_LINE_STRIP); 
+        #for p in PATH: glVertex2f(*p)
+        #glEnd()
 
         for e in game.enemies: e.draw()
         for t in game.towers: t.draw(selected=(t == game.selected_tower))
