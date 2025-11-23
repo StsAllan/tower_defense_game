@@ -362,6 +362,18 @@ class Game:
             print(f"Iniciando Onda {self.wave}: {self.enemies_to_spawn} inimigos (Mult: {multiplier:.2f}x)")
             self.wave_active = True
 
+            # ### NOVO ###: Toca a música em loop
+            # O -1 significa "tocar em loop infinito" até mandarmos parar
+            # Verifica se o mixer está ativo antes de tentar tocar
+            if pygame.mixer.get_init():
+                 # Se já estiver tocando algo (ex: de uma onda anterior que bugou), para antes
+                pygame.mixer.music.stop()
+                try:
+                    # O play(-1) faz tocar para sempre em loop
+                    pygame.mixer.music.play(loops=-1)
+                except:
+                    pass # Se a música não foi carregada no main, isso evita crash
+
     def update(self):
         if self.wave_active and self.enemies_to_spawn > 0:
             self.spawn_timer += 1
@@ -371,6 +383,11 @@ class Game:
                 self.spawn_timer = 0
         elif self.wave_active and len(self.enemies) == 0 and self.enemies_to_spawn == 0:
             self.wave_active = False 
+            # ### NOVO ###: Para a música quando a onda acaba
+            if pygame.mixer.get_init():
+                # fadeout(1000) faz a música baixar o volume gradualmente
+                # por 1 segundo (1000ms) antes de parar. Fica mais suave.
+                pygame.mixer.music.fadeout(1000)
         for e in self.enemies[:]:
             if e.move():
                 self.lives -= 1
@@ -419,6 +436,34 @@ def draw_circle_outline(x, y, radius):
 # --- Main ---
 def main():
     pygame.init()
+
+    # ### NOVO ###: Inicializa o mixer de som
+    # Os parâmetros são: frequência, tamanho do sample, canais (2=stereo), buffer
+    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+
+    pygame.display.set_mode((LOGICAL_WIDTH, LOGICAL_HEIGHT), DOUBLEBUF | OPENGL)
+    pygame.display.set_caption("Tower Defense OpenGL")
+    glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluOrtho2D(0, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0)
+    glMatrixMode(GL_MODELVIEW)
+
+    # ### NOVO ###: Tenta carregar a música
+    music_path = os.path.join("assets", "trilha-sonora.wav") # Certifique-se que o nome está igual ao que você salvou
+    music_loaded = False
+    if os.path.exists(music_path):
+        try:
+            pygame.mixer.music.load(music_path)
+            # Opcional: Define o volume (0.0 a 1.0). 0.5 é 50%
+            pygame.mixer.music.set_volume(0.5) 
+            music_loaded = True
+            print("Música carregada com sucesso!")
+        except Exception as e:
+            print(f"Erro ao carregar música: {e}")
+    else:
+        print(f"Arquivo de música não encontrado em: {music_path}")
+
+
+    clock = pygame.time.Clock()
+
     screen = pygame.display.set_mode((LOGICAL_WIDTH, LOGICAL_HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
     pygame.display.set_caption("Tower Defense OpenGL")
     
