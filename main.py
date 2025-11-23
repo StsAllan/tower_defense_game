@@ -439,25 +439,43 @@ def main():
 
     # ### NOVO ###: Inicializa o mixer de som
     # Os parâmetros são: frequência, tamanho do sample, canais (2=stereo), buffer
+    # ### NOVO ###: Inicializa o mixer de som
     pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
 
     pygame.display.set_mode((LOGICAL_WIDTH, LOGICAL_HEIGHT), DOUBLEBUF | OPENGL)
     pygame.display.set_caption("Tower Defense OpenGL")
-    glMatrixMode(GL_PROJECTION); glLoadIdentity(); gluOrtho2D(0, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0)
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluOrtho2D(0, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0)
     glMatrixMode(GL_MODELVIEW)
 
-    # ### NOVO ###: Tenta carregar a música
-    music_path = os.path.join("assets", "trilha-sonora.wav") # Certifique-se que o nome está igual ao que você salvou
-    music_loaded = False
-    if os.path.exists(music_path):
+    # ### NOVO ###: Carrega as duas músicas
+    normal_music_path = os.path.join("assets", "trilha-sonora.wav")
+    wave_music_path = os.path.join("assets", "wave-song.wav")
+
+    music_files = {
+        'normal': normal_music_path,
+        'wave': wave_music_path
+    }
+
+    # Verifica se os arquivos existem
+    for music_type, path in music_files.items():
+        if os.path.exists(path):
+            print(f"Música {music_type} encontrada: {path}")
+        else:
+            print(f"AVISO: Música {music_type} não encontrada em: {path}")
+
+    # Inicia tocando a música normal
+    current_music = None
+    if os.path.exists(normal_music_path):
         try:
-            pygame.mixer.music.load(music_path)
-            # Opcional: Define o volume (0.0 a 1.0). 0.5 é 50%
-            pygame.mixer.music.set_volume(0.5) 
-            music_loaded = True
-            print("Música carregada com sucesso!")
+            pygame.mixer.music.load(normal_music_path)
+            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.play(loops=-1)
+            current_music = 'normal'
+            print("Música normal iniciada!")
         except Exception as e:
-            print(f"Erro ao carregar música: {e}")
+            print(f"Erro ao carregar música normal: {e}")
     else:
         print(f"Arquivo de música não encontrado em: {music_path}")
 
