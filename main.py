@@ -197,19 +197,41 @@ class Projectile:
 
 
 class Enemy:
-    def __init__(self, wave_level):
+    def __init__(self, wave_level, enemy_type='normal'):
         self.path_index = 0
         self.x, self.y = PATH[0]
-        self.max_health = 50 + (wave_level * 25)
+        self.enemy_type = enemy_type
+
+        if enemy_type == 'blue':
+            base_health = (50 + (wave_level * 25)) * 3 * 2
+            self.max_health = base_health * (1.5 ** (wave_level - 5))
+            self.base_speed = 0.8 + (wave_level * 0.07)
+            self.reward = 60 + (wave_level * 8)
+            self.radius = 18
+            self.animation_speed = 0.11
+            self.sprite_prefix = "blue"
+
+        elif enemy_type == 'tank':
+            base_health = (50 + (wave_level * 25)) * 3
+            self.max_health = base_health * (1.5 ** (wave_level - 4))
+            self.base_speed = 1.0 + (wave_level * 0.05)
+            self.reward = 30 + (wave_level * 5)
+            self.radius = 13
+            self.animation_speed = 0.12
+
+        else:
+            self.max_health = 50 + (wave_level * 25)
+            self.base_speed = 1.5 + (wave_level * 0.1)
+            self.reward = 15 + (wave_level * 2)
+            self.radius = 15
+            self.animation_speed = 0.15
+
         self.health = self.max_health
-        self.base_speed = 1.5 + (wave_level * 0.1)
         self.slow_timer = 0
         self.current_slow_factor = 1.0
-        self.radius = 15
-        self.reward = 15 + (wave_level * 2)
         self.active = True
         self.frame_index = 0.0
-        self.animation_speed = 0.15
+
 
     def apply_slow(self, duration, factor):
         self.slow_timer = duration
@@ -238,18 +260,45 @@ class Enemy:
         return False
 
     def draw(self):
-        enemy_frames = TEXTURES.get('enemy_frames', [])
+        # Escolhe os frames corretos baseado no tipo
+        if self.enemy_type == 'blue':
+            enemy_frames = TEXTURES.get('blue_frames', [])
+        elif self.enemy_type == 'tank':
+            enemy_frames = TEXTURES.get('tank_frames', [])
+        else:
+            enemy_frames = TEXTURES.get('enemy_frames', [])
+
         color = (1, 1, 1)
-        if self.slow_timer > 0: color = (0.3, 0.3, 1.0)
+        if self.slow_timer > 0:
+            color = (0.3, 0.3, 1.0)
+
         if enemy_frames:
             idx = int(self.frame_index) % len(enemy_frames)
-            draw_sprite(enemy_frames[idx], self.x, self.y, 30, 30, color=color)
+
+            # Tamanhos individuais por tipo
+            if self.enemy_type == 'blue':
+                size = 34  # Ajustável — é maior que o tank
+            elif self.enemy_type == 'tank':
+                size = 24
+            else:
+                size = 30
+
+            draw_sprite(enemy_frames[idx], self.x, self.y, size, size, color=color)
         else:
-            glColor3f(*color);
+            glColor3f(*color)
             draw_circle(self.x, self.y, self.radius)
+
         glColor3f(1, 0, 0)
         ratio = max(0, self.health / self.max_health)
-        draw_rect(self.x - 10, self.y - 20, 20 * ratio, 4)
+
+        if self.enemy_type == 'blue':
+            bar_width = 28
+        elif self.enemy_type == 'tank':
+            bar_width = 22
+        else:
+            bar_width = 20
+
+        draw_rect(self.x - bar_width / 2, self.y - 25, bar_width * ratio, 4)
 
 
 class Tower:
@@ -359,6 +408,7 @@ class Game:
         self.load_assets()
 
     def load_assets(self):
+        # Carrega frames do inimigo normal
         enemy_frames = []
         for i in range(4):
             tex = load_texture(f'enemy_{i}.png')
@@ -368,8 +418,35 @@ class Game:
                 fb = load_texture('enemy.png')
                 if fb: enemy_frames.append(fb)
         TEXTURES['enemy_frames'] = enemy_frames
+
+        # Carrega frames do inimigo tanque (7 sprites)
+        tank_frames = []
+        for i in range(1, 8):
+            if i == 1:
+                tex = load_texture('sprite.png')
+            else:
+                tex = load_texture(f'sprite{i}.png')
+            if tex:
+                tank_frames.append(tex)
+        TEXTURES['tank_frames'] = tank_frames
+
+        # Carrega frames do inimigo BLUE (7 sprites)
+        blue_frames = []
+        for i in range(1, 8):
+            if i == 1:
+                tex = load_texture('blue.png')
+            else:
+                tex = load_texture(f'blue{i}.png')
+            if tex:
+                blue_frames.append(tex)
+        TEXTURES['blue_frames'] = blue_frames
+
+
+        # Carrega texturas das torres
         for key, data in TOWER_TYPES.items():
             TEXTURES[data['img_name']] = load_texture(data['img_name'])
+
+        # Carrega outras texturas
         TEXTURES['background'] = load_texture('background.png')
         TEXTURES['buff_icon'] = load_texture('buff_icon.png')
         TEXTURES['heart'] = load_texture('heart.png')
@@ -402,7 +479,15 @@ class Game:
         if self.wave_active and self.enemies_to_spawn > 0:
             self.spawn_timer += 1
             if self.spawn_timer > 60:
-                self.enemies.append(Enemy(self.wave))
+                if self.wave >= 5 and len(self.enemies) % 4 == 0:
+                    self.enemies.append(Enemy(self.wave, 'blue'))
+
+                elif self.wave >= 4 and len(self.enemies) % 3 == 0:
+                    self.enemies.append(Enemy(self.wave, 'tank'))
+
+                else:
+                    self.enemies.append(Enemy(self.wave, 'normal'))
+
                 self.enemies_to_spawn -= 1
                 self.spawn_timer = 0
         elif self.wave_active and len(self.enemies) == 0 and self.enemies_to_spawn == 0:
@@ -607,15 +692,19 @@ def main():
                                 game.towers.append(Tower(mx, my, game.build_mode))
                                 game.money -= TOWER_TYPES[game.build_mode]['custo']
                                 game.build_mode = None
-                            else: print("Lugar inválido!")
+                            else:
+                                print("Lugar inválido!")
                         else:
                             clicked = False
                             for t in game.towers:
                                 if math.hypot(t.x - mx, t.y - my) < 20:
-                                    game.selected_tower = t; clicked = True; break
+                                    game.selected_tower = t;
+                                    clicked = True;
+                                    break
                             if not clicked: game.selected_tower = None
                     elif event.button == 3:
-                        if game.build_mode: game.build_mode = None 
+                        if game.build_mode:
+                            game.build_mode = None
                         elif game.selected_tower:
                             dist = math.hypot(game.selected_tower.x - mx, game.selected_tower.y - my)
                             if dist < 20 and game.money >= game.selected_tower.level * 50:
@@ -625,11 +714,12 @@ def main():
         if game.lives > 0: game.update()
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        
-        if TEXTURES.get('background'): 
-            draw_sprite(TEXTURES['background'], LOGICAL_WIDTH/2, 225, 800, 450)
-        else: glColor3f(0.1, 0.1, 0.1); draw_rect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT)
-        
+
+        if TEXTURES.get('background'):
+            draw_sprite(TEXTURES['background'], LOGICAL_WIDTH / 2, 225, 800, 450)
+        else:
+            glColor3f(0.1, 0.1, 0.1); draw_rect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT)
+
         for e in game.enemies: e.draw()
         for t in game.towers: t.draw(selected=(t == game.selected_tower))
         for p in game.projectiles: p.draw()
@@ -642,40 +732,55 @@ def main():
                 is_valid = game.can_build(mx, my)
                 drawn = draw_sprite(TEXTURES.get(stats['img_name']), mx, my, 40, 40, alpha=0.5)
                 if not drawn:
-                    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                    glColor4f(*stats['cor'], 0.5); draw_rect(mx - 15, my - 15, 30, 30); glDisable(GL_BLEND)
-                glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                if is_valid: glColor4f(0, 0, 0, 0.3) 
-                else: glColor4f(1, 0, 0, 0.5) 
-                draw_circle_outline(mx, my, stats['range']); glDisable(GL_BLEND)
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                    glColor4f(*stats['cor'], 0.5);
+                    draw_rect(mx - 15, my - 15, 30, 30);
+                    glDisable(GL_BLEND)
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                if is_valid:
+                    glColor4f(0, 0, 0, 0.3)
+                else:
+                    glColor4f(1, 0, 0, 0.5)
+                draw_circle_outline(mx, my, stats['range']);
+                glDisable(GL_BLEND)
 
         # --- HUD Topo (Com textos como textura para alinhamento correto) ---
-        glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glColor4f(0, 0, 0, 0.5); draw_rect(0, 0, LOGICAL_WIDTH, 40); glDisable(GL_BLEND)
-        
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glColor4f(0, 0, 0, 0.5);
+        draw_rect(0, 0, LOGICAL_WIDTH, 40);
+        glDisable(GL_BLEND)
+
         # Texto Onda
-        draw_text(f"ONDA {game.wave}", LOGICAL_WIDTH - 140, 20, font_hud) # Y=20 (centro)
-        
+        draw_text(f"ONDA {game.wave}", LOGICAL_WIDTH - 140, 20, font_hud)  # Y=20 (centro)
+
         # Vida
         icon_drawn = draw_sprite(TEXTURES.get('heart'), 30, 20, 24, 24)
         if not icon_drawn: glColor3f(1, 0, 0); draw_rect(18, 8, 24, 24)
-        draw_text(f"{game.lives}", 55, 20, font_hud) # Y=20 (centro)
+        draw_text(f"{game.lives}", 55, 20, font_hud)  # Y=20 (centro)
 
         # Dinheiro
         icon_drawn = draw_sprite(TEXTURES.get('coin'), 130, 20, 24, 24)
         if not icon_drawn: glColor3f(1, 1, 0); draw_rect(118, 8, 24, 24)
-        draw_text(f"${game.money}", 155, 20, font_hud) # Y=20 (centro)
+        draw_text(f"${game.money}", 155, 20, font_hud)  # Y=20 (centro)
 
-        glColor3f(0.2, 0.2, 0.2); draw_rect(0, PLAY_AREA_HEIGHT, LOGICAL_WIDTH, UI_HEIGHT)
+        glColor3f(0.2, 0.2, 0.2);
+        draw_rect(0, PLAY_AREA_HEIGHT, LOGICAL_WIDTH, UI_HEIGHT)
         for tab_name, rect in game.tabs.items():
-            if tab_name == game.active_tab: glColor3f(0.5, 0.5, 0.8)
-            else: glColor3f(0.3, 0.3, 0.3)
+            if tab_name == game.active_tab:
+                glColor3f(0.5, 0.5, 0.8)
+            else:
+                glColor3f(0.3, 0.3, 0.3)
             draw_rect(rect.x, rect.y, rect.w, rect.h)
-            draw_text(tab_name, rect.x, rect.y + rect.h/2, font) # Texto centralizado no botão
+            draw_text(tab_name, rect.x, rect.y + rect.h / 2, font)  # Texto centralizado no botão
 
         for key, rect in current_tower_buttons.items():
-            if key == game.build_mode: glColor3f(0.8, 0.8, 0.8)
-            else: glColor3f(0.5, 0.5, 0.5)
+            if key == game.build_mode:
+                glColor3f(0.8, 0.8, 0.8)
+            else:
+                glColor3f(0.5, 0.5, 0.5)
             draw_rect(rect.x, rect.y, rect.w, rect.h)
             cost_txt = f"${TOWER_TYPES[key]['custo']}"
             # Ajuste de texto dos botões
@@ -694,20 +799,23 @@ def main():
                 info = f"{t.stats['nome']} (Lv {t.level}) | Renda: ${t.stats['income']}/5s"
             else:
                 info = f"{t.stats['nome']} (Lv {t.level}) | Dano: {int(t.stats['dano'])}"
-            
-            draw_text(info, 350, PLAY_AREA_HEIGHT + 30, font, (255,255,255,255))
-            
+
+            draw_text(info, 350, PLAY_AREA_HEIGHT + 30, font, (255, 255, 255, 255))
+
             # Botão de Upgrade
             upgrade_text = f"Upgrade: ${t.level * 50} (Dir.)"
             draw_text(upgrade_text, 350, PLAY_AREA_HEIGHT + 50, font)
 
             sell_val = int(t.total_investment * 0.75)
             glColor3f(0.8, 0.2, 0.2)
-            draw_rect(game.sell_button_rect.x, game.sell_button_rect.y, game.sell_button_rect.w, game.sell_button_rect.h)
+            draw_rect(game.sell_button_rect.x, game.sell_button_rect.y, game.sell_button_rect.w,
+                      game.sell_button_rect.h)
             draw_text(f"VENDER ${sell_val}", game.sell_button_rect.x, game.sell_button_rect.y + 20, font)
 
-        if game.lives <= 0: draw_text("GAME OVER", LOGICAL_WIDTH/2, LOGICAL_HEIGHT/2, font)
-        pygame.display.flip(); clock.tick(60)
+        if game.lives <= 0: draw_text("GAME OVER", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2, font)
+        pygame.display.flip();
+        clock.tick(60)
     pygame.quit()
+
 
 if __name__ == "__main__": main()
