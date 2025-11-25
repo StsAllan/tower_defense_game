@@ -423,6 +423,7 @@ class Game:
         TEXTURES['buff_icon'] = load_texture('buff_icon.png')
         TEXTURES['heart'] = load_texture('heart.png')
         TEXTURES['coin'] = load_texture('coin.png')
+        TEXTURES['menu_bottom'] = load_texture('menu.png')
 
     def can_build(self, x, y):
         path_radius = 25
@@ -720,7 +721,17 @@ def main():
         if not icon_drawn: glColor3f(1, 1, 0); draw_rect(118, 8, 24, 24)
         draw_text(f"${game.money}", 160, 28, font_hud)
 
-        glColor3f(0.2, 0.2, 0.2); draw_rect(0, PLAY_AREA_HEIGHT, LOGICAL_WIDTH, UI_HEIGHT)
+        # --- DESENHO DO MENU DE BAIXO ---
+        if TEXTURES.get('menu_bottom'):
+            # Explicação da Matemática:
+            # X = 400 (Meio da tela)
+            # Y = 525 (Onde começa a UI [450] + Metade da altura da UI [75])
+            # Largura = 800, Altura = 150
+            draw_sprite(TEXTURES['menu_bottom'], LOGICAL_WIDTH/2, PLAY_AREA_HEIGHT + UI_HEIGHT/2, 800, 150)
+        else:
+            # Fallback: Se a imagem não existir, desenha o cinza antigo
+            glColor3f(0.2, 0.2, 0.2); draw_rect(0, PLAY_AREA_HEIGHT, LOGICAL_WIDTH, UI_HEIGHT)
+
         for tab_name, rect in game.tabs.items():
             if tab_name == game.active_tab: glColor3f(0.5, 0.5, 0.8)
             else: glColor3f(0.3, 0.3, 0.3)
