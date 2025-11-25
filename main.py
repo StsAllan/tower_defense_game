@@ -433,6 +433,18 @@ class Game:
         enemy_frames = []
         enemy_hp_frames = []
         enemy_speed_frames = []
+
+        filename = 'buttom.png'
+        if os.path.exists(os.path.join("assets", filename)):
+            print(f"BAIXO: Arquivo '{filename}' ENCONTRADO!")
+            TEXTURES['buttom'] = load_texture(filename)
+            if TEXTURES['buttom']:
+                print("BAIXO: Textura carregada na memória com sucesso!")
+            else:
+                print("BAIXO: Arquivo existe, mas falhou ao carregar (imagem corrompida?)")
+        else:
+            print(f"ERRO CRÍTICO: O arquivo '{filename}' NÃO está na pasta assets!")
+            print(f"O Python está procurando aqui: {os.path.abspath('assets')}")
         
         # Normal
         for i in range(4):
