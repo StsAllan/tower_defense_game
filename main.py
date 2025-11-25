@@ -4,6 +4,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
 import os
+import random
 
 # --- Configurações Lógicas ---
 LOGICAL_WIDTH = 800
@@ -298,6 +299,10 @@ class Tower:
         self.total_investment = self.stats['custo']
         self.base_cooldown = self.stats['speed']
         self.is_buffed = False
+        
+        # --- NOVA ESTRATÉGIA DE ALVO ---
+        # Opções: 'PRIMEIRO', 'ÚLTIMO', 'MAIS VIDA'
+        self.strategy = 'PRIMEIRO'
 
     def upgrade(self):
         cost = self.level * 50
@@ -339,11 +344,32 @@ class Tower:
                     self.cooldown_timer = self.stats['speed']
                     game_ref.floating_texts.append(FloatingText(self.x, self.y + 20, f"+${amount}"))
             return
+            
+        # --- NOVA LÓGICA DE ALVO BASEADA NA ESTRATÉGIA ---
+        # 1. Filtra inimigos no range
+        in_range_enemies = []
         for enemy in enemies:
             dist = math.hypot(enemy.x - self.x, enemy.y - self.y)
             if dist <= self.stats['range']:
-                self.shoot(enemy, projectiles_list)
-                break
+                in_range_enemies.append(enemy)
+        
+        if in_range_enemies:
+            target = None
+            
+            if self.strategy == 'PRIMEIRO':
+                # A lista 'enemies' já está ordenada por ordem de spawn (mais antigos primeiro)
+                target = in_range_enemies[0]
+                
+            elif self.strategy == 'ÚLTIMO':
+                # O último da lista é o mais novo (mais atrás no caminho)
+                target = in_range_enemies[-1]
+                
+            elif self.strategy == 'MAIS VIDA':
+                # Procura o que tem maior vida atual
+                target = max(in_range_enemies, key=lambda e: e.health)
+            
+            if target:
+                self.shoot(target, projectiles_list)
 
     def shoot(self, enemy, projectiles_list):
         proj = Projectile(self.x, self.y, enemy, self.stats['dano'], self.stats['cor'], self.stats['slow_factor'],
@@ -387,6 +413,15 @@ class Game:
 
         self.sell_button_rect = Rect(650, LOGICAL_HEIGHT - 60, 120, 40)
         self.wave_button_rect = Rect(650, LOGICAL_HEIGHT - 130, 120, 40)
+        
+        # --- BOTÕES DE ESTRATÉGIA ---
+        # Definidos aqui para checagem de clique (posições relativas ao menu)
+        # Eles ficam na área da UI, vamos posicionar perto do botão de venda/upgrade
+        # Posições: X=450, 520, 590 (pequenos botões)
+        self.strat_btn_first = Rect(350, PLAY_AREA_HEIGHT + 80, 60, 25)
+        self.strat_btn_hp = Rect(415, PLAY_AREA_HEIGHT + 80, 70, 25)
+        self.strat_btn_last = Rect(490, PLAY_AREA_HEIGHT + 80, 60, 25)
+        
         self.active_tab = 'DANO'
         self.tabs = {
             'DANO': Rect(10, PLAY_AREA_HEIGHT + 10, 100, 30),
@@ -399,6 +434,7 @@ class Game:
         enemy_hp_frames = []
         enemy_speed_frames = []
         
+        # Normal
         for i in range(4):
             tex = load_texture(f'enemy_{i}.png')
             if tex: enemy_frames.append(tex)
@@ -407,11 +443,13 @@ class Game:
                 if fb: enemy_frames.append(fb)
         TEXTURES['enemy_frames'] = enemy_frames
         
+        # Tank (HP)
         for i in range(4):
             tex = load_texture(f'enemy_hp_{i}.png')
             if tex: enemy_hp_frames.append(tex)
         TEXTURES['enemy_hp_frames'] = enemy_hp_frames
         
+        # Speed (Novo)
         for i in range(4):
             tex = load_texture(f'enemy_speed_{i}.png')
             if tex: enemy_speed_frames.append(tex)
@@ -423,7 +461,6 @@ class Game:
         TEXTURES['buff_icon'] = load_texture('buff_icon.png')
         TEXTURES['heart'] = load_texture('heart.png')
         TEXTURES['coin'] = load_texture('coin.png')
-        TEXTURES['menu_bottom'] = load_texture('menu.png')
 
     def can_build(self, x, y):
         path_radius = 25
@@ -451,18 +488,29 @@ class Game:
     def update(self):
         if self.wave_active and self.enemies_to_spawn > 0:
             self.spawn_timer += 1
-            if self.spawn_timer > 60:
+            
+            # Spawn Rate Dinâmico
+            spawn_delay = max(10, 40 - (self.wave * 2))
+            
+            if self.spawn_timer > spawn_delay:
                 enemy_type = 'normal'
-                rand = random.random()
                 
-                if self.wave >= 3 and rand < 0.20:
-                    enemy_type = 'tank'
-                elif self.wave >= 2 and rand < 0.40:
-                    enemy_type = 'speed'
+                # Probabilidade Progressiva
+                if self.wave >= 3:
+                    cycles = (self.wave - 3) // 3
+                    special_chance = 0.05 + (cycles * 0.05)
+                    special_chance = min(special_chance, 0.50)
+                    
+                    if random.random() < special_chance:
+                        if random.random() < 0.5:
+                            enemy_type = 'tank'
+                        else:
+                            enemy_type = 'speed'
                 
                 self.enemies.append(Enemy(self.wave, enemy_type))
                 self.enemies_to_spawn -= 1
                 self.spawn_timer = 0
+                
         elif self.wave_active and len(self.enemies) == 0 and self.enemies_to_spawn == 0:
             self.wave_active = False
 
@@ -560,6 +608,7 @@ def main():
     font = pygame.font.SysFont('Arial', 16)
     font_hud = pygame.font.SysFont('Arial', 24, bold=True)
     font_float = pygame.font.SysFont('Arial', 14, bold=True)
+    font_btn_small = pygame.font.SysFont('Arial', 12, bold=True) # Fonte para botões pequenos
     game = Game()
 
     # Controle de fade para não travar o jogo
@@ -568,55 +617,40 @@ def main():
 
     running = True
     while running:
-        # === SISTEMA DE TROCA DE MÚSICA (CORRIGIDO) ===
+        # === SISTEMA DE TROCA DE MÚSICA ===
         if pygame.mixer.get_init():
-            # Se a wave está ativa e não está tocando a música de wave
             if game.wave_active and current_music != 'wave' and not music_changing:
                 if os.path.exists(wave_music_path):
                     try:
-                        pygame.mixer.music.fadeout(300)  # Fade out de 0.3 segundo
+                        pygame.mixer.music.fadeout(300)
                         music_changing = True
-                        fade_counter = 20  # ~20 frames = 0.3s a 60fps
-                        print("♪ Iniciando troca para música de wave...")
-                    except Exception as e:
-                        print(f"Erro ao iniciar fade: {e}")
-
-            # Se a wave não está ativa e não está tocando a música normal
+                        fade_counter = 20
+                    except Exception as e: print(f"Erro ao iniciar fade: {e}")
             elif not game.wave_active and current_music != 'normal' and not music_changing:
                 if os.path.exists(normal_music_path):
                     try:
-                        pygame.mixer.music.fadeout(500)  # Fade out de 0.5 segundo
+                        pygame.mixer.music.fadeout(500)
                         music_changing = True
-                        fade_counter = 60 + 20  # 1 segundo (60 frames) + 0.3s fade = 80 frames
-                        print("♪ Aguardando 1 segundo antes de retomar música normal...")
-                    except Exception as e:
-                        print(f"Erro ao iniciar fade: {e}")
+                        fade_counter = 80
+                    except Exception as e: print(f"Erro ao iniciar fade: {e}")
 
-        # Contador de fade (não trava o jogo)
         if music_changing:
             fade_counter -= 1
             if fade_counter <= 0:
-                # Agora sim troca a música
                 if game.wave_active and current_music != 'wave':
                     try:
                         pygame.mixer.music.load(wave_music_path)
                         pygame.mixer.music.set_volume(0.5)
                         pygame.mixer.music.play(loops=-1)
                         current_music = 'wave'
-                        print("♪ Música de WAVE iniciada!")
-                    except Exception as e:
-                        print(f"Erro ao carregar música de wave: {e}")
-
+                    except Exception as e: print(f"Erro ao carregar wave: {e}")
                 elif not game.wave_active and current_music != 'normal':
                     try:
                         pygame.mixer.music.load(normal_music_path)
                         pygame.mixer.music.set_volume(0.5)
                         pygame.mixer.music.play(loops=-1)
                         current_music = 'normal'
-                        print("♪ Música NORMAL retomada (após 1 segundo de pausa)!")
-                    except Exception as e:
-                        print(f"Erro ao retomar música normal: {e}")
-
+                    except Exception as e: print(f"Erro ao retomar normal: {e}")
                 music_changing = False
 
         current_tower_buttons = {}
@@ -643,21 +677,38 @@ def main():
                 mx, my = get_logical_mouse()
                 if my > PLAY_AREA_HEIGHT:
                     if event.button == 1:
+                        # 1. Abas
                         for tab_name, rect in game.tabs.items():
                             if rect.collidepoint(mx, my):
                                 game.active_tab = tab_name;
                                 game.build_mode = None
+                        
+                        # 2. Botões de Torre
                         for key, rect in current_tower_buttons.items():
                             if rect.collidepoint(mx, my):
                                 if game.money >= TOWER_TYPES[key]['custo']:
                                     game.build_mode = key;
                                     game.selected_tower = None
+                                    
+                        # 3. Botões Globais (Wave)
                         if game.wave_button_rect.collidepoint(mx, my): game.start_wave()
-                        if game.selected_tower and game.sell_button_rect.collidepoint(mx, my):
-                            refund = int(game.selected_tower.total_investment * 0.75)
-                            game.money += refund
-                            game.towers.remove(game.selected_tower)
-                            game.selected_tower = None
+                        
+                        # 4. Botões de Torre Selecionada (Vender e Estratégia)
+                        if game.selected_tower:
+                            if game.sell_button_rect.collidepoint(mx, my):
+                                refund = int(game.selected_tower.total_investment * 0.75)
+                                game.money += refund
+                                game.towers.remove(game.selected_tower)
+                                game.selected_tower = None
+                            
+                            # Checa clique nos botões de estratégia
+                            elif game.strat_btn_first.collidepoint(mx, my):
+                                game.selected_tower.strategy = 'PRIMEIRO'
+                            elif game.strat_btn_hp.collidepoint(mx, my):
+                                game.selected_tower.strategy = 'MAIS VIDA'
+                            elif game.strat_btn_last.collidepoint(mx, my):
+                                game.selected_tower.strategy = 'ÚLTIMO'
+
                 else:
                     if event.button == 1:
                         if game.build_mode:
@@ -721,25 +772,16 @@ def main():
         if not icon_drawn: glColor3f(1, 1, 0); draw_rect(118, 8, 24, 24)
         draw_text(f"${game.money}", 160, 28, font_hud)
 
-        # --- DESENHO DO MENU DE BAIXO ---
-        if TEXTURES.get('menu_bottom'):
-            # Explicação da Matemática:
-            # X = 400 (Meio da tela)
-            # Y = 525 (Onde começa a UI [450] + Metade da altura da UI [75])
-            # Largura = 800, Altura = 150
-            draw_sprite(TEXTURES['menu_bottom'], LOGICAL_WIDTH/2, PLAY_AREA_HEIGHT + UI_HEIGHT/2, 800, 150)
-        else:
-            # Fallback: Se a imagem não existir, desenha o cinza antigo
-            glColor3f(0.2, 0.2, 0.2); draw_rect(0, PLAY_AREA_HEIGHT, LOGICAL_WIDTH, UI_HEIGHT)
-
+        glColor3f(0.2, 0.2, 0.2); draw_rect(0, PLAY_AREA_HEIGHT, LOGICAL_WIDTH, UI_HEIGHT)
         for tab_name, rect in game.tabs.items():
             if tab_name == game.active_tab: glColor3f(0.5, 0.5, 0.8)
             else: glColor3f(0.3, 0.3, 0.3)
             draw_rect(rect.x, rect.y, rect.w, rect.h)
+            
             # --- CENTRALIZAÇÃO DO TEXTO DA ABA ---
             text_w, text_h = font.size(tab_name)
             center_x = rect.x + (rect.w - text_w) / 2
-            center_y = rect.y + (rect.h / 2) + (text_h / 4) # Ajuste fino
+            center_y = rect.y + (rect.h / 2) + (text_h / 4)
             draw_text(tab_name, center_x, center_y, font)
 
         for key, rect in current_tower_buttons.items():
@@ -775,6 +817,7 @@ def main():
             
             draw_text(info, 350, PLAY_AREA_HEIGHT + 30, font, (255,255,255,255))
             
+            # Botão de Upgrade
             upgrade_text = f"Upgrade: ${t.level * 50} (Dir.)"
             draw_text(upgrade_text, 350, PLAY_AREA_HEIGHT + 50, font)
 
@@ -786,6 +829,53 @@ def main():
             sell_txt = f"VENDER ${sell_val}"
             sw, sh = font.size(sell_txt)
             draw_text(sell_txt, game.sell_button_rect.x + (game.sell_button_rect.w - sw)/2, game.sell_button_rect.y + 20, font)
+            
+            if t.stats['nome'] != 'Fazenda':
+                
+                # Define as cores (Verde se ativo, Cinza se inativo)
+                c1 = (0, 0.8, 0) if t.strategy == 'PRIMEIRO' else (0.4, 0.4, 0.4)
+                c2 = (0, 0.8, 0) if t.strategy == 'MAIS VIDA' else (0.4, 0.4, 0.4)
+                c3 = (0, 0.8, 0) if t.strategy == 'ÚLTIMO' else (0.4, 0.4, 0.4)
+                
+                # Botão 1: Primeiro
+                glColor3f(*c1)
+                draw_rect(game.strat_btn_first.x, game.strat_btn_first.y, game.strat_btn_first.w, game.strat_btn_first.h)
+                tw, th = font_btn_small.size("Primeiro")
+                draw_text("Primeiro", game.strat_btn_first.x + (60-tw)/2, game.strat_btn_first.y + 12, font_btn_small)
+
+                # Botão 2: Mais Vida
+                glColor3f(*c2)
+                draw_rect(game.strat_btn_hp.x, game.strat_btn_hp.y, game.strat_btn_hp.w, game.strat_btn_hp.h)
+                tw, th = font_btn_small.size("Mais Vida")
+                draw_text("Mais Vida", game.strat_btn_hp.x + (70-tw)/2, game.strat_btn_hp.y + 12, font_btn_small)
+
+                # Botão 3: Último
+                glColor3f(*c3)
+                draw_rect(game.strat_btn_last.x, game.strat_btn_last.y, game.strat_btn_last.w, game.strat_btn_last.h)
+                tw, th = font_btn_small.size("Último")
+                draw_text("Último", game.strat_btn_last.x + (60-tw)/2, game.strat_btn_last.y + 12, font_btn_small)
+
+            # --- BOTÕES DE ESTRATÉGIA (DANO APENAS) ---
+            if t.stats['role'] == 'DANO':
+                # Cores dos botões (Verde se ativo, Cinza se não)
+                c1 = (0, 0.8, 0) if t.strategy == 'PRIMEIRO' else (0.4, 0.4, 0.4)
+                c2 = (0, 0.8, 0) if t.strategy == 'MAIS VIDA' else (0.4, 0.4, 0.4)
+                c3 = (0, 0.8, 0) if t.strategy == 'ÚLTIMO' else (0.4, 0.4, 0.4)
+                
+                # Desenha Botão 1 (Primeiro)
+                glColor3f(*c1)
+                draw_rect(game.strat_btn_first.x, game.strat_btn_first.y, game.strat_btn_first.w, game.strat_btn_first.h)
+                draw_text("Primeiro", game.strat_btn_first.x + 5, game.strat_btn_first.y + 12, font_btn_small)
+
+                # Desenha Botão 2 (Mais Vida)
+                glColor3f(*c2)
+                draw_rect(game.strat_btn_hp.x, game.strat_btn_hp.y, game.strat_btn_hp.w, game.strat_btn_hp.h)
+                draw_text("Mais Vida", game.strat_btn_hp.x + 5, game.strat_btn_hp.y + 12, font_btn_small)
+
+                # Desenha Botão 3 (Último)
+                glColor3f(*c3)
+                draw_rect(game.strat_btn_last.x, game.strat_btn_last.y, game.strat_btn_last.w, game.strat_btn_last.h)
+                draw_text("Último", game.strat_btn_last.x + 10, game.strat_btn_last.y + 12, font_btn_small)
 
         if game.lives <= 0: draw_text("GAME OVER", LOGICAL_WIDTH/2, LOGICAL_HEIGHT/2, font)
         pygame.display.flip(); clock.tick(60)
