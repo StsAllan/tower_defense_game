@@ -1,930 +1,337 @@
-import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
-import math
-import os
-import random
 
-# --- Configurações Lógicas ---
-LOGICAL_WIDTH = 800
-LOGICAL_HEIGHT = 600
-UI_HEIGHT = 150
-PLAY_AREA_HEIGHT = LOGICAL_HEIGHT - UI_HEIGHT
-
-# --- Variáveis de Viewport ---
-viewport_x = 0
-viewport_y = 0
-viewport_w = LOGICAL_WIDTH
-viewport_h = LOGICAL_HEIGHT
-scale_ratio = 1.0
-
-# --- Dicionário de Texturas ---
-TEXTURES = {}
-
-# --- Definição das Torres ---
-TOWER_TYPES = {
-    'BASICA': {'nome': 'Basica', 'role': 'DANO', 'range': 100, 'dano': 20, 'speed': 30, 'custo': 100, 'cor': (0, 1, 1),
-               'img_name': 'basica.png', 'slow_factor': 1.0, 'slow_time': 0, 'buff_factor': 1.0, 'income': 0},
-    'RAPIDA': {'nome': 'Rapida', 'role': 'DANO', 'range': 70, 'dano': 8, 'speed': 10, 'custo': 150, 'cor': (1, 1, 0),
-               'img_name': 'rapida.png', 'slow_factor': 1.0, 'slow_time': 0, 'buff_factor': 1.0, 'income': 0},
-    'SNIPER': {'nome': 'Sniper', 'role': 'DANO', 'range': 200, 'dano': 100, 'speed': 80, 'custo': 200, 'cor': (1, 0, 1),
-               'img_name': 'sniper.png', 'slow_factor': 1.0, 'slow_time': 0, 'buff_factor': 1.0, 'income': 0},
-    'GELINHO': {'nome': 'Gelinho', 'role': 'SUPORTE', 'range': 110, 'dano': 5, 'speed': 40, 'custo': 120,
-                'cor': (0.5, 0.8, 1), 'img_name': 'gelinho.png', 'slow_factor': 0.5, 'slow_time': 120,
-                'buff_factor': 1.0, 'income': 0},
-    'ESTIMULANTE': {'nome': 'Estimulante', 'role': 'SUPORTE', 'range': 80, 'dano': 2, 'speed': 45, 'custo': 250,
-                    'cor': (1, 0.5, 0), 'img_name': 'estimulante.png', 'slow_factor': 1.0, 'slow_time': 0,
-                    'buff_factor': 1.3, 'income': 0},
-    'FAZENDA': {'nome': 'Fazenda', 'role': 'SUPORTE', 'range': 40, 'dano': 0, 'speed': 300, 'custo': 300,
-                'cor': (0, 0.8, 0), 'img_name': 'fazenda.png', 'slow_factor': 1.0, 'slow_time': 0, 'buff_factor': 1.0,
-                'income': 10},
-}
-
-PATH = [(0, 100), (200, 100), (200, 300), (500, 300), (500, 100), (700, 100), (700, 450), (800, 450)]
+from config import *
+from utils import *
+from jogo import Jogo, GerenciadorMusica
+from entidades import Torre
 
 
-# --- Funções de Tela ---
-def update_viewport(window_w, window_h):
-    """Recalcula a área de jogo e a escala quando a janela muda de tamanho"""
-    global viewport_x, viewport_y, viewport_w, viewport_h, scale_ratio
-    
-    target_aspect = LOGICAL_WIDTH / LOGICAL_HEIGHT
-    window_aspect = window_w / window_h
-    
-    if window_aspect > target_aspect:
-        # Janela mais larga (barras nas laterais)
-        viewport_h = window_h
-        viewport_w = int(window_h * target_aspect)
-        viewport_y = 0
-        viewport_x = int((window_w - viewport_w) / 2)
+def processar_eventos(jogo, evento, mx, my):
+    """Processa eventos de mouse"""
+    if my > ALTURA_AREA_JOGO:
+        # Cliques na UI
+        if evento.button == 1:
+            # Clique nas abas
+            for nome_aba, rect in jogo.abas.items():
+                if rect.collidepoint(mx, my):
+                    jogo.aba_ativa = nome_aba
+                    jogo.modo_construcao = None
+
+            # Clique nos botões de torres
+            botoes_torres = {}
+            x_offset = 10
+            for chave, dados in TIPOS_TORRES.items():
+                if dados['role'] == jogo.aba_ativa:
+                    rect = Rect(x_offset, ALTURA_AREA_JOGO + 60, 100, 40)
+                    botoes_torres[chave] = rect
+                    x_offset += 110
+
+            for chave, rect in botoes_torres.items():
+                if rect.collidepoint(mx, my):
+                    if jogo.dinheiro >= TIPOS_TORRES[chave]['custo']:
+                        jogo.modo_construcao = chave
+                        jogo.torre_selecionada = None
+
+            # Botão de onda
+            if jogo.btn_onda.collidepoint(mx, my):
+                jogo.iniciar_onda()
+
+            # Botões da torre selecionada
+            if jogo.torre_selecionada:
+                if jogo.btn_vender.collidepoint(mx, my):
+                    reembolso = int(jogo.torre_selecionada.investimento_total * 0.75)
+                    jogo.dinheiro += reembolso
+                    jogo.torres.remove(jogo.torre_selecionada)
+                    jogo.torre_selecionada = None
+
+                # Botões de estratégia
+                elif jogo.btn_primeiro.collidepoint(mx, my):
+                    jogo.torre_selecionada.estrategia = 'PRIMEIRO'
+                elif jogo.btn_mais_vida.collidepoint(mx, my):
+                    jogo.torre_selecionada.estrategia = 'MAIS VIDA'
+                elif jogo.btn_ultimo.collidepoint(mx, my):
+                    jogo.torre_selecionada.estrategia = 'ÚLTIMO'
+
     else:
-        # Janela mais alta (barras em cima/baixo)
-        viewport_w = window_w
-        viewport_h = int(window_w / target_aspect)
-        viewport_x = 0
-        viewport_y = int((window_h - viewport_h) / 2)
-        
-    scale_ratio = LOGICAL_WIDTH / viewport_w
-    
-    # Atualiza a área de desenho do OpenGL
-    glViewport(viewport_x, viewport_y, viewport_w, viewport_h)
+        # Cliques na área de jogo
+        if evento.button == 1:
+            if jogo.modo_construcao:
+                if jogo.pode_construir(mx, my):
+                    jogo.torres.append(Torre(mx, my, jogo.modo_construcao))
+                    jogo.dinheiro -= TIPOS_TORRES[jogo.modo_construcao]['custo']
+                    jogo.modo_construcao = None
+            else:
+                clicou = False
+                for torre in jogo.torres:
+                    if math.hypot(torre.x - mx, torre.y - my) < 20:
+                        jogo.torre_selecionada = torre
+                        clicou = True
+                        break
+                if not clicou:
+                    jogo.torre_selecionada = None
+
+        elif evento.button == 3:
+            if jogo.modo_construcao:
+                jogo.modo_construcao = None
+            elif jogo.torre_selecionada:
+                dist = math.hypot(jogo.torre_selecionada.x - mx, jogo.torre_selecionada.y - my)
+                if dist < 20 and jogo.dinheiro >= jogo.torre_selecionada.nivel * 50:
+                    jogo.dinheiro -= jogo.torre_selecionada.nivel * 50
+                    jogo.torre_selecionada.melhorar()
 
 
-def get_logical_mouse():
-    """Traduz o mouse real da tela para o mouse do jogo (800x600)"""
-    raw_x, raw_y = pygame.mouse.get_pos()
-    
-    # CORREÇÃO: Usamos diretamente viewport_x e viewport_y.
-    # Essas variáveis já guardam a posição exata da barra preta calculada no resize.
-    # Isso garante que o mouse bata 100% com o desenho do OpenGL.
-    
-    game_x = (raw_x - viewport_x) * scale_ratio
-    game_y = (raw_y - viewport_y) * scale_ratio
-    
-    return game_x, game_y
-    
-    return game_x, game_y
-
-
-def dist_point_to_segment(px, py, x1, y1, x2, y2):
-    l2 = (x1 - x2) ** 2 + (y1 - y2) ** 2
-    if l2 == 0: return math.hypot(px - x1, py - y1)
-    t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2
-    t = max(0, min(1, t))
-    proj_x = x1 + t * (x2 - x1)
-    proj_y = y1 + t * (y2 - y1)
-    return math.hypot(px - proj_x, py - proj_y)
-
-
-# --- Carregamento ---
-def load_texture(filename):
-    path = os.path.join("assets", filename)
-    if not os.path.exists(path): return None
-    try:
-        texture_surface = pygame.image.load(path).convert_alpha()
-        texture_surface = pygame.transform.flip(texture_surface, False, True)
-        texture_data = pygame.image.tostring(texture_surface, "RGBA", 1)
-        width, height = texture_surface.get_width(), texture_surface.get_height()
-        tex_id = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, tex_id)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        return tex_id
-    except:
-        return None
-
-
-def draw_sprite(texture_id, x, y, width, height, color=(1, 1, 1), alpha=1.0):
-    if texture_id is None: return False
-    glEnable(GL_TEXTURE_2D);
-    glEnable(GL_BLEND);
+def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
+    """Desenha interface do usuário"""
+    # HUD superior
+    glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-    glBindTexture(GL_TEXTURE_2D, texture_id)
-    glColor4f(color[0], color[1], color[2], alpha)
-    half_w, half_h = width / 2, height / 2
-    glBegin(GL_QUADS)
-    glTexCoord2f(0, 0);
-    glVertex2f(x - half_w, y - half_h)
-    glTexCoord2f(1, 0);
-    glVertex2f(x + half_w, y - half_h)
-    glTexCoord2f(1, 1);
-    glVertex2f(x + half_w, y + half_h)
-    glTexCoord2f(0, 1);
-    glVertex2f(x - half_w, y + half_h)
-    glEnd()
-    glDisable(GL_TEXTURE_2D);
+    glColor4f(0, 0, 0, 0.5)
+    desenhar_retangulo(0, 0, LARGURA_LOGICA, 40)
     glDisable(GL_BLEND)
-    return True
 
+    desenhar_texto(f"ONDA {jogo.onda}", LARGURA_LOGICA - 140, 25, fonte_hud)
 
-def draw_text(text, x, y, font, color=(255, 255, 255, 255)):
-    text_surface = font.render(text, True, color)
-    text_surface = pygame.transform.flip(text_surface, False, True)
-
-    text_data = pygame.image.tostring(text_surface, "RGBA", 1)
-    w, h = text_surface.get_width(), text_surface.get_height()
-
-    tex_id = glGenTextures(1)
-    glBindTexture(GL_TEXTURE_2D, tex_id)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
-
-    draw_sprite(tex_id, x + w / 2, y, w, h)
-    glDeleteTextures(1, [tex_id])
-
-
-# --- Classes ---
-class FloatingText:
-    def __init__(self, x, y, text, color=(0.2, 1.0, 0.2)):
-        self.x, self.y = x, y
-        self.text = text
-        self.color = color
-        self.timer = 60
-        self.active = True
-
-    def update(self):
-        self.y += 0.5
-        self.timer -= 1
-        if self.timer <= 0: self.active = False
-
-    def draw(self, font):
-        alpha = 255
-        if self.timer < 20: alpha = int((self.timer / 20.0) * 255)
-        r = int(self.color[0] * 255)
-        g = int(self.color[1] * 255)
-        b = int(self.color[2] * 255)
-        draw_text(self.text, self.x, self.y, font, (r, g, b, alpha))
-
-
-class Projectile:
-    def __init__(self, x, y, target, damage, color, slow_factor=1.0, slow_time=0):
-        self.x, self.y = x, y
-        self.target = target
-        self.damage = damage
-        self.color = color
-        self.speed = 12
-        self.active = True
-        self.radius = 4
-        self.slow_factor = slow_factor
-        self.slow_time = slow_time
-
-    def update(self):
-        if not self.target.active: self.active = False; return
-        dx, dy = self.target.x - self.x, self.target.y - self.y
-        dist = math.hypot(dx, dy)
-        if dist < self.speed + self.target.radius:
-            self.target.health -= self.damage
-            if self.slow_time > 0: self.target.apply_slow(self.slow_time, self.slow_factor)
-            self.active = False
-        else:
-            self.x += (dx / dist) * self.speed
-            self.y += (dy / dist) * self.speed
-
-    def draw(self):
-        glColor3f(*self.color)
-        draw_circle(self.x, self.y, self.radius)
-
-
-class Enemy:
-    def __init__(self, wave_level, enemy_type='normal'):
-        self.path_index = 0
-        self.x, self.y = PATH[0]
-        self.active = True
-        self.enemy_type = enemy_type # 'normal', 'tank' ou 'speed'
-        
-        base_hp = 50 + (wave_level * 25)
-        base_speed = 1.5 + (wave_level * 0.1)
-        
-        if self.enemy_type == 'tank':
-            self.max_health = base_hp * 3
-            self.base_speed = base_speed * 0.6 
-            self.radius = 18 
-            self.reward = (15 + (wave_level * 2)) * 2 
-        elif self.enemy_type == 'speed':
-            self.max_health = base_hp * 0.6
-            self.base_speed = base_speed * 2.0 
-            self.radius = 12 
-            self.reward = 15 + (wave_level * 2)
-        else:
-            self.max_health = base_hp
-            self.base_speed = base_speed
-            self.radius = 15
-            self.reward = 15 + (wave_level * 2)
-            
-        self.health = self.max_health
-        self.slow_timer = 0
-        self.current_slow_factor = 1.0
-        self.frame_index = 0.0
-        self.animation_speed = 0.15
-
-    def apply_slow(self, duration, factor):
-        self.slow_timer = duration
-        self.current_slow_factor = factor
-
-    def move(self):
-        effective_speed = self.base_speed
-        if self.slow_timer > 0:
-            self.slow_timer -= 1
-            effective_speed *= self.current_slow_factor
-        else:
-            self.current_slow_factor = 1.0
-        
-        self.frame_index += self.animation_speed
-        if self.path_index < len(PATH) - 1:
-            target_x, target_y = PATH[self.path_index + 1]
-            dx, dy = target_x - self.x, target_y - self.y
-            dist = math.hypot(dx, dy)
-            if dist < effective_speed:
-                self.x, self.y = target_x, target_y
-                self.path_index += 1
-            else:
-                self.x += (dx / dist) * effective_speed
-                self.y += (dy / dist) * effective_speed
-        else:
-            return True
-        return False
-
-    def draw(self):
-        if self.enemy_type == 'tank':
-            frames_key = 'enemy_hp_frames'
-            fallback_color = (1, 0.5, 0)
-        elif self.enemy_type == 'speed':
-            frames_key = 'enemy_speed_frames'
-            fallback_color = (1, 1, 0)
-        else:
-            frames_key = 'enemy_frames'
-            fallback_color = (1, 1, 1)
-
-        enemy_frames = TEXTURES.get(frames_key, [])
-        
-        color = (1, 1, 1)
-        if self.slow_timer > 0: color = (0.3, 0.3, 1.0)
-        
-        if enemy_frames:
-            idx = int(self.frame_index) % len(enemy_frames)
-            size = 30
-            if self.enemy_type == 'tank': size = 36
-            if self.enemy_type == 'speed': size = 24
-            
-            draw_sprite(enemy_frames[idx], self.x, self.y, size, size, color=color)
-        else:
-            draw_color = color if self.slow_timer > 0 else fallback_color
-            glColor3f(*draw_color)
-            draw_circle(self.x, self.y, self.radius)
-            
+    # Ícone de vida
+    if desenhar_sprite(TEXTURAS.get('heart'), 30, 20, 24, 24):
+        pass
+    else:
         glColor3f(1, 0, 0)
-        ratio = max(0, self.health / self.max_health)
-        draw_rect(self.x - 10, self.y - 20, 20 * ratio, 4)
+        desenhar_retangulo(18, 8, 24, 24)
+    desenhar_texto(f"{jogo.vidas}", 60, 28, fonte_hud)
 
+    # Ícone de moeda
+    if desenhar_sprite(TEXTURAS.get('coin'), 130, 20, 24, 24):
+        pass
+    else:
+        glColor3f(1, 1, 0)
+        desenhar_retangulo(118, 8, 24, 24)
+    desenhar_texto(f"${jogo.dinheiro}", 160, 28, fonte_hud)
 
-class Tower:
-    def __init__(self, x, y, type_key):
-        self.x, self.y = x, y
-        self.type = type_key
-        self.stats = TOWER_TYPES[type_key].copy()
-        self.cooldown_timer = 0
-        self.level = 1
-        self.total_investment = self.stats['custo']
-        self.base_cooldown = self.stats['speed']
-        self.is_buffed = False
-        
-        # --- NOVA ESTRATÉGIA DE ALVO ---
-        # Opções: 'PRIMEIRO', 'ÚLTIMO', 'MAIS VIDA'
-        self.strategy = 'PRIMEIRO'
+    # Menu inferior
+    if TEXTURAS.get('menu_bottom'):
+        desenhar_sprite(
+            TEXTURAS['menu_bottom'],
+            LARGURA_LOGICA / 2,
+            ALTURA_AREA_JOGO + ALTURA_UI / 2,
+            800, 150
+        )
+    else:
+        glColor3f(0.2, 0.2, 0.2)
+        desenhar_retangulo(0, ALTURA_AREA_JOGO, LARGURA_LOGICA, ALTURA_UI)
 
-    def upgrade(self):
-        cost = self.level * 50
-        self.level += 1
-        if self.stats['nome'] == 'Estimulante':
-            self.stats['buff_factor'] += 0.15
-            self.stats['range'] *= 1.1
-        elif self.stats['nome'] == 'Fazenda':
-            self.stats['income'] += 10
+    # Abas
+    for nome_aba, rect in jogo.abas.items():
+        if nome_aba == jogo.aba_ativa:
+            glColor3f(0.5, 0.5, 0.8)
         else:
-            self.stats['dano'] *= 1.3
-            self.stats['range'] *= 1.1
-            self.base_cooldown *= 0.9
-            self.stats['speed'] = self.base_cooldown
-        self.total_investment += cost
-        return cost
+            glColor3f(0.3, 0.3, 0.3)
+        desenhar_retangulo(rect.x, rect.y, rect.w, rect.h)
 
-    def reset_buffs(self):
-        if self.stats['role'] == 'DANO':
-            self.stats['speed'] = self.base_cooldown
-        self.is_buffed = False
+        text_w, text_h = fonte.size(nome_aba)
+        center_x = rect.x + (rect.w - text_w) / 2
+        center_y = rect.y + (rect.h / 2) + (text_h / 4)
+        desenhar_texto(nome_aba, center_x, center_y, fonte)
 
-    def apply_buff(self, factor):
-        if self.stats['role'] == 'DANO':
-            new_speed = self.base_cooldown / factor
-            if new_speed < self.stats['speed']:
-                self.stats['speed'] = new_speed
-                self.is_buffed = True
+    # Botões de torres
+    x_offset = 10
+    for chave, dados in TIPOS_TORRES.items():
+        if dados['role'] == jogo.aba_ativa:
+            rect = Rect(x_offset, ALTURA_AREA_JOGO + 60, 100, 40)
 
-    def update(self, enemies, projectiles_list, game_ref):
-        if self.cooldown_timer > 0:
-            self.cooldown_timer -= 1
-            return
-        if self.stats.get('income', 0) > 0:
-            if game_ref.wave_active:
-                if self.cooldown_timer <= 0:
-                    amount = self.stats['income']
-                    game_ref.money += amount
-                    self.cooldown_timer = self.stats['speed']
-                    game_ref.floating_texts.append(FloatingText(self.x, self.y + 20, f"+${amount}"))
-            return
-            
-        # --- NOVA LÓGICA DE ALVO BASEADA NA ESTRATÉGIA ---
-        # 1. Filtra inimigos no range
-        in_range_enemies = []
-        for enemy in enemies:
-            dist = math.hypot(enemy.x - self.x, enemy.y - self.y)
-            if dist <= self.stats['range']:
-                in_range_enemies.append(enemy)
-        
-        if in_range_enemies:
-            target = None
-            
-            if self.strategy == 'PRIMEIRO':
-                # A lista 'enemies' já está ordenada por ordem de spawn (mais antigos primeiro)
-                target = in_range_enemies[0]
-                
-            elif self.strategy == 'ÚLTIMO':
-                # O último da lista é o mais novo (mais atrás no caminho)
-                target = in_range_enemies[-1]
-                
-            elif self.strategy == 'MAIS VIDA':
-                # Procura o que tem maior vida atual
-                target = max(in_range_enemies, key=lambda e: e.health)
-            
-            if target:
-                self.shoot(target, projectiles_list)
-
-    def shoot(self, enemy, projectiles_list):
-        proj = Projectile(self.x, self.y, enemy, self.stats['dano'], self.stats['cor'], self.stats['slow_factor'],
-                          self.stats['slow_time'])
-        projectiles_list.append(proj)
-        self.cooldown_timer = self.stats['speed']
-
-    def draw(self, selected=False):
-        tex_key = self.stats['img_name']
-        drawn = draw_sprite(TEXTURES.get(tex_key), self.x, self.y, 40, 40)
-        if not drawn:
-            glColor3f(*self.stats['cor'])
-            draw_rect(self.x - 15, self.y - 15, 30, 30)
-        if self.is_buffed:
-            icon_drawn = draw_sprite(TEXTURES.get('buff_icon'), self.x, self.y - 30, 20, 20)
-            if not icon_drawn:
-                glColor3f(1, 1, 0);
-                draw_rect(self.x - 5, self.y - 35, 10, 10)
-        if selected:
-            glColor3f(0, 0, 0)
-            draw_circle_outline(self.x, self.y, self.stats['range'])
-            if self.stats.get('buff_factor', 1.0) > 1.0:
-                glColor3f(1, 1, 0);
-                draw_circle_outline(self.x, self.y, self.stats['range'] + 2)
-
-
-class Game:
-    def __init__(self):
-        self.money = 400
-        self.lives = 10
-        self.wave = 0
-        self.enemies = []
-        self.projectiles = []
-        self.towers = []
-        self.floating_texts = []
-        self.selected_tower = None
-        self.wave_active = False
-        self.enemies_to_spawn = 0
-        self.spawn_timer = 0
-        self.build_mode = None
-
-        self.sell_button_rect = Rect(650, LOGICAL_HEIGHT - 60, 120, 40)
-        self.wave_button_rect = Rect(650, LOGICAL_HEIGHT - 130, 120, 40)
-        
-        # --- BOTÕES DE ESTRATÉGIA ---
-        # Definidos aqui para checagem de clique (posições relativas ao menu)
-        # Eles ficam na área da UI, vamos posicionar perto do botão de venda/upgrade
-        # Posições: X=450, 520, 590 (pequenos botões)
-        self.strat_btn_first = Rect(350, PLAY_AREA_HEIGHT + 80, 60, 25)
-        self.strat_btn_hp = Rect(415, PLAY_AREA_HEIGHT + 80, 70, 25)
-        self.strat_btn_last = Rect(490, PLAY_AREA_HEIGHT + 80, 60, 25)
-        
-        self.active_tab = 'DANO'
-        self.tabs = {
-            'DANO': Rect(10, PLAY_AREA_HEIGHT + 10, 100, 30),
-            'SUPORTE': Rect(120, PLAY_AREA_HEIGHT + 10, 100, 30)
-        }
-        self.load_assets()
-
-    def load_assets(self):
-        enemy_frames = []
-        enemy_hp_frames = []
-        enemy_speed_frames = []
-
-        filename = 'buttom.png'
-        if os.path.exists(os.path.join("assets", filename)):
-            print(f"BAIXO: Arquivo '{filename}' ENCONTRADO!")
-            TEXTURES['buttom'] = load_texture(filename)
-            if TEXTURES['buttom']:
-                print("BAIXO: Textura carregada na memória com sucesso!")
+            if chave == jogo.modo_construcao:
+                glColor3f(0.8, 0.8, 0.8)
             else:
-                print("BAIXO: Arquivo existe, mas falhou ao carregar (imagem corrompida?)")
+                glColor3f(0.5, 0.5, 0.5)
+            desenhar_retangulo(rect.x, rect.y, rect.w, rect.h)
+
+            nome_txt = f"{dados['nome']}"
+            custo_txt = f"${dados['custo']}"
+
+            nw, nh = fonte.size(nome_txt)
+            cw, ch = fonte.size(custo_txt)
+
+            desenhar_texto(nome_txt, rect.x + (rect.w - nw) / 2, rect.y + 12, fonte)
+            desenhar_texto(custo_txt, rect.x + (rect.w - cw) / 2, rect.y + 28, fonte)
+
+            x_offset += 110
+
+    # Botão de onda
+    glColor3f(0, 0.8, 0)
+    desenhar_retangulo(jogo.btn_onda.x, jogo.btn_onda.y, jogo.btn_onda.w, jogo.btn_onda.h)
+    onda_txt = "Prox Onda"
+    ww, wh = fonte.size(onda_txt)
+    desenhar_texto(
+        onda_txt,
+        jogo.btn_onda.x + (jogo.btn_onda.w - ww) / 2,
+        jogo.btn_onda.y + 20,
+        fonte,
+        (0, 0, 0, 255)
+    )
+
+    # Info da torre selecionada
+    if jogo.torre_selecionada:
+        t = jogo.torre_selecionada
+
+        if t.stats['nome'] == 'Estimulante':
+            info = f"{t.stats['nome']} (Lv {t.nivel}) | Buff: {t.stats['buff_factor']:.2f}x"
+        elif t.stats['nome'] == 'Fazenda':
+            info = f"{t.stats['nome']} (Lv {t.nivel}) | Renda: ${t.stats['income']}/5s"
         else:
-            print(f"ERRO CRÍTICO: O arquivo '{filename}' NÃO está na pasta assets!")
-            print(f"O Python está procurando aqui: {os.path.abspath('assets')}")
-        
-        # Normal
-        for i in range(4):
-            tex = load_texture(f'enemy_{i}.png')
-            if tex: enemy_frames.append(tex)
-            elif i == 0: 
-                fb = load_texture('enemy.png')
-                if fb: enemy_frames.append(fb)
-        TEXTURES['enemy_frames'] = enemy_frames
-        
-        # Tank (HP)
-        for i in range(4):
-            tex = load_texture(f'enemy_hp_{i}.png')
-            if tex: enemy_hp_frames.append(tex)
-        TEXTURES['enemy_hp_frames'] = enemy_hp_frames
-        
-        # Speed (Novo)
-        for i in range(4):
-            tex = load_texture(f'enemy_speed_{i}.png')
-            if tex: enemy_speed_frames.append(tex)
-        TEXTURES['enemy_speed_frames'] = enemy_speed_frames
+            info = f"{t.stats['nome']} (Lv {t.nivel}) | Dano: {int(t.stats['dano'])}"
 
-        for key, data in TOWER_TYPES.items():
-            TEXTURES[data['img_name']] = load_texture(data['img_name'])
-        TEXTURES['background'] = load_texture('background.png')
-        TEXTURES['buff_icon'] = load_texture('buff_icon.png')
-        TEXTURES['heart'] = load_texture('heart.png')
-        TEXTURES['coin'] = load_texture('coin.png')
-        TEXTURES['menu_bottom'] = load_texture('menu.png')
+        desenhar_texto(info, 350, ALTURA_AREA_JOGO + 30, fonte, (255, 255, 255, 255))
+        desenhar_texto(f"Upgrade: ${t.nivel * 50} (Dir.)", 350, ALTURA_AREA_JOGO + 50, fonte)
 
-    def can_build(self, x, y):
-        path_radius = 25
-        for i in range(len(PATH) - 1):
-            p1 = PATH[i]
-            p2 = PATH[i + 1]
-            dist = dist_point_to_segment(x, y, p1[0], p1[1], p2[0], p2[1])
-            if dist < path_radius: return False
-        min_tower_dist = 40
-        for t in self.towers:
-            dist = math.hypot(x - t.x, y - t.y)
-            if dist < min_tower_dist: return False
-        return True
+        # Botão vender
+        valor_venda = int(t.investimento_total * 0.75)
+        glColor3f(0.8, 0.2, 0.2)
+        desenhar_retangulo(jogo.btn_vender.x, jogo.btn_vender.y, jogo.btn_vender.w, jogo.btn_vender.h)
 
-    def start_wave(self):
-        if not self.wave_active:
-            self.wave += 1
-            base_amount = 5 + self.wave
-            cycle = self.wave // 3
-            multiplier = 1.7 ** cycle
-            self.enemies_to_spawn = int(base_amount * multiplier)
-            print(f"Iniciando Onda {self.wave}: {self.enemies_to_spawn} inimigos (Mult: {multiplier:.2f}x)")
-            self.wave_active = True
+        vender_txt = f"VENDER ${valor_venda}"
+        sw, sh = fonte.size(vender_txt)
+        desenhar_texto(vender_txt, jogo.btn_vender.x + (jogo.btn_vender.w - sw) / 2, jogo.btn_vender.y + 20, fonte)
 
-    def update(self):
-        if self.wave_active and self.enemies_to_spawn > 0:
-            self.spawn_timer += 1
-            
-            # Spawn Rate Dinâmico
-            spawn_delay = max(10, 40 - (self.wave * 2))
-            
-            if self.spawn_timer > spawn_delay:
-                enemy_type = 'normal'
-                
-                # Probabilidade Progressiva
-                if self.wave >= 3:
-                    cycles = (self.wave - 3) // 3
-                    special_chance = 0.05 + (cycles * 0.05)
-                    special_chance = min(special_chance, 0.80)
-                    
-                    if random.random() < special_chance:
-                        if random.random() < 0.5:
-                            enemy_type = 'tank'
-                        else:
-                            enemy_type = 'speed'
-                
-                self.enemies.append(Enemy(self.wave, enemy_type))
-                self.enemies_to_spawn -= 1
-                self.spawn_timer = 0
-                
-        elif self.wave_active and len(self.enemies) == 0 and self.enemies_to_spawn == 0:
-            self.wave_active = False
+        # Botões de estratégia
+        if t.stats['nome'] != 'Fazenda':
+            c1 = (0, 0.8, 0) if t.estrategia == 'PRIMEIRO' else (0.4, 0.4, 0.4)
+            c2 = (0, 0.8, 0) if t.estrategia == 'MAIS VIDA' else (0.4, 0.4, 0.4)
+            c3 = (0, 0.8, 0) if t.estrategia == 'ÚLTIMO' else (0.4, 0.4, 0.4)
 
-        for e in self.enemies[:]:
-            if e.move():
-                self.lives -= 1
-                e.active = False
-                self.enemies.remove(e)
-            elif e.health <= 0:
-                self.money += int(e.reward)
-                e.active = False
-                self.enemies.remove(e)
-        for t in self.towers: t.reset_buffs()
-        for t in self.towers:
-            buff_factor = t.stats.get('buff_factor', 1.0)
-            if buff_factor > 1.0:
-                for target in self.towers:
-                    if target != t:
-                        dist = math.hypot(target.x - t.x, target.y - t.y)
-                        if dist <= t.stats['range']: target.apply_buff(buff_factor)
-        for t in self.towers: t.update(self.enemies, self.projectiles, self)
-        for p in self.projectiles[:]:
-            p.update()
-            if not p.active: self.projectiles.remove(p)
-        for ft in self.floating_texts[:]:
-            ft.update()
-            if not ft.active: self.floating_texts.remove(ft)
+            glColor3f(*c1)
+            desenhar_retangulo(jogo.btn_primeiro.x, jogo.btn_primeiro.y, jogo.btn_primeiro.w, jogo.btn_primeiro.h)
+            tw, th = fonte_pequena.size("Primeiro")
+            desenhar_texto("Primeiro", jogo.btn_primeiro.x + (60 - tw) / 2, jogo.btn_primeiro.y + 12, fonte_pequena)
+
+            glColor3f(*c2)
+            desenhar_retangulo(jogo.btn_mais_vida.x, jogo.btn_mais_vida.y, jogo.btn_mais_vida.w, jogo.btn_mais_vida.h)
+            tw, th = fonte_pequena.size("Mais Vida")
+            desenhar_texto("Mais Vida", jogo.btn_mais_vida.x + (70 - tw) / 2, jogo.btn_mais_vida.y + 12, fonte_pequena)
+
+            glColor3f(*c3)
+            desenhar_retangulo(jogo.btn_ultimo.x, jogo.btn_ultimo.y, jogo.btn_ultimo.w, jogo.btn_ultimo.h)
+            tw, th = fonte_pequena.size("Último")
+            desenhar_texto("Último", jogo.btn_ultimo.x + (60 - tw) / 2, jogo.btn_ultimo.y + 12, fonte_pequena)
 
 
-# --- Desenho Auxiliar ---
-def draw_rect(x, y, width, height):
-    glBegin(GL_QUADS)
-    glVertex2f(x, y);
-    glVertex2f(x + width, y);
-    glVertex2f(x + width, y + height);
-    glVertex2f(x, y + height)
-    glEnd()
-
-
-def draw_circle(x, y, radius):
-    glBegin(GL_TRIANGLE_FAN)
-    glVertex2f(x, y)
-    for i in range(361):
-        angle = math.radians(i)
-        glVertex2f(x + math.cos(angle) * radius, y + math.sin(angle) * radius)
-    glEnd()
-
-
-def draw_circle_outline(x, y, radius):
-    glBegin(GL_LINE_LOOP)
-    for i in range(360):
-        angle = math.radians(i)
-        glVertex2f(x + math.cos(angle) * radius, y + math.sin(angle) * radius)
-    glEnd()
-
-
-# --- Main ---
 def main():
+    """Função principal"""
     pygame.init()
     pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
 
-    screen = pygame.display.set_mode((LOGICAL_WIDTH, LOGICAL_HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
+    tela = pygame.display.set_mode((LARGURA_LOGICA, ALTURA_LOGICA), DOUBLEBUF | OPENGL | RESIZABLE)
     pygame.display.set_caption("Tower Defense OpenGL")
 
-    update_viewport(LOGICAL_WIDTH, LOGICAL_HEIGHT)
-    glMatrixMode(GL_PROJECTION);
+    atualizar_viewport(LARGURA_LOGICA, ALTURA_LOGICA)
+    glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluOrtho2D(0, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0)
+    gluOrtho2D(0, LARGURA_LOGICA, ALTURA_LOGICA, 0)
     glMatrixMode(GL_MODELVIEW)
 
-    # Carrega as duas músicas
-    normal_music_path = os.path.join("assets", "trilha-sonora.wav")
-    wave_music_path = os.path.join("assets", "wave-song.wav")
+    # Fontes
+    fonte = pygame.font.SysFont('Arial', 16)
+    fonte_hud = pygame.font.SysFont('Arial', 24, bold=True)
+    fonte_float = pygame.font.SysFont('Arial', 14, bold=True)
+    fonte_pequena = pygame.font.SysFont('Arial', 12, bold=True)
 
-    # Verifica se os arquivos existem
-    for music_type, path in [('normal', normal_music_path), ('wave', wave_music_path)]:
-        if os.path.exists(path):
-            print(f"✓ Música {music_type} encontrada: {path}")
-        else:
-            print(f"✗ AVISO: Música {music_type} NÃO encontrada em: {path}")
+    # Inicializa jogo e música
+    jogo = Jogo()
+    musica = GerenciadorMusica(pygame.mixer)
+    musica.iniciar()
 
-    # Inicia tocando a música normal
-    current_music = None
-    if os.path.exists(normal_music_path):
-        try:
-            pygame.mixer.music.load(normal_music_path)
-            pygame.mixer.music.set_volume(0.5)
-            pygame.mixer.music.play(loops=-1)
-            current_music = 'normal'
-            print("♪ Música normal iniciada!")
-        except Exception as e:
-            print(f"Erro ao carregar música normal: {e}")
+    relogio = pygame.time.Clock()
+    rodando = True
 
-    clock = pygame.time.Clock()
-    font = pygame.font.SysFont('Arial', 16)
-    font_hud = pygame.font.SysFont('Arial', 24, bold=True)
-    font_float = pygame.font.SysFont('Arial', 14, bold=True)
-    font_btn_small = pygame.font.SysFont('Arial', 12, bold=True) # Fonte para botões pequenos
-    game = Game()
-
-    # Controle de fade para não travar o jogo
-    fade_counter = 0
-    music_changing = False
-
-    running = True
-    while running:
-        # === SISTEMA DE TROCA DE MÚSICA ===
+    while rodando:
+        # Atualiza música
         if pygame.mixer.get_init():
-            if game.wave_active and current_music != 'wave' and not music_changing:
-                if os.path.exists(wave_music_path):
-                    try:
-                        pygame.mixer.music.fadeout(300)
-                        music_changing = True
-                        fade_counter = 20
-                    except Exception as e: print(f"Erro ao iniciar fade: {e}")
-            elif not game.wave_active and current_music != 'normal' and not music_changing:
-                if os.path.exists(normal_music_path):
-                    try:
-                        pygame.mixer.music.fadeout(500)
-                        music_changing = True
-                        fade_counter = 80
-                    except Exception as e: print(f"Erro ao iniciar fade: {e}")
+            if jogo.onda_ativa:
+                musica.trocar('onda')
+            else:
+                musica.trocar('normal')
+            musica.atualizar()
 
-        if music_changing:
-            fade_counter -= 1
-            if fade_counter <= 0:
-                if game.wave_active and current_music != 'wave':
-                    try:
-                        pygame.mixer.music.load(wave_music_path)
-                        pygame.mixer.music.set_volume(0.5)
-                        pygame.mixer.music.play(loops=-1)
-                        current_music = 'wave'
-                    except Exception as e: print(f"Erro ao carregar wave: {e}")
-                elif not game.wave_active and current_music != 'normal':
-                    try:
-                        pygame.mixer.music.load(normal_music_path)
-                        pygame.mixer.music.set_volume(0.5)
-                        pygame.mixer.music.play(loops=-1)
-                        current_music = 'normal'
-                    except Exception as e: print(f"Erro ao retomar normal: {e}")
-                music_changing = False
+        # Eventos
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                rodando = False
 
-        current_tower_buttons = {}
-        x_offset = 10
-        for key, data in TOWER_TYPES.items():
-            if data['role'] == game.active_tab:
-                rect = Rect(x_offset, PLAY_AREA_HEIGHT + 60, 100, 40)
-                current_tower_buttons[key] = rect
-                x_offset += 110
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: running = False
-            
-            # --- ADICIONE ESTE BLOCO ---
-            if event.type == VIDEORESIZE:
-                # Atualiza a tela e recalcula a escala
-                screen = pygame.display.set_mode((event.w, event.h), DOUBLEBUF | OPENGL | RESIZABLE)
-                update_viewport(event.w, event.h)
-                
-                # Recarrega a projeção 2D
+            if evento.type == VIDEORESIZE:
+                tela = pygame.display.set_mode((evento.w, evento.h), DOUBLEBUF | OPENGL | RESIZABLE)
+                atualizar_viewport(evento.w, evento.h)
                 glMatrixMode(GL_PROJECTION)
                 glLoadIdentity()
-                gluOrtho2D(0, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0)
+                gluOrtho2D(0, LARGURA_LOGICA, ALTURA_LOGICA, 0)
                 glMatrixMode(GL_MODELVIEW)
-                
-                # Recarrega texturas (necessário ao recriar contexto OpenGL)
-                game.load_assets()
+                jogo.carregar_assets()
 
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                mx, my = get_logical_mouse() 
-                
-                if my > PLAY_AREA_HEIGHT:
-                    if event.button == 1:
-                        # 1. Abas
-                        for tab_name, rect in game.tabs.items():
-                            if rect.collidepoint(mx, my):
-                                game.active_tab = tab_name;
-                                game.build_mode = None
-                        
-                        # 2. Botões de Torre
-                        for key, rect in current_tower_buttons.items():
-                            if rect.collidepoint(mx, my):
-                                if game.money >= TOWER_TYPES[key]['custo']:
-                                    game.build_mode = key;
-                                    game.selected_tower = None
-                                    
-                        # 3. Botões Globais (Wave)
-                        if game.wave_button_rect.collidepoint(mx, my): game.start_wave()
-                        
-                        # 4. Botões de Torre Selecionada (Vender e Estratégia)
-                        if game.selected_tower:
-                            if game.sell_button_rect.collidepoint(mx, my):
-                                refund = int(game.selected_tower.total_investment * 0.75)
-                                game.money += refund
-                                game.towers.remove(game.selected_tower)
-                                game.selected_tower = None
-                            
-                            # Checa clique nos botões de estratégia
-                            elif game.strat_btn_first.collidepoint(mx, my):
-                                game.selected_tower.strategy = 'PRIMEIRO'
-                            elif game.strat_btn_hp.collidepoint(mx, my):
-                                game.selected_tower.strategy = 'MAIS VIDA'
-                            elif game.strat_btn_last.collidepoint(mx, my):
-                                game.selected_tower.strategy = 'ÚLTIMO'
+            if evento.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = obter_mouse_logico()
+                processar_eventos(jogo, evento, mx, my)
 
-                else:
-                    if event.button == 1:
-                        if game.build_mode:
-                            if game.can_build(mx, my):
-                                game.towers.append(Tower(mx, my, game.build_mode))
-                                game.money -= TOWER_TYPES[game.build_mode]['custo']
-                                game.build_mode = None
-                            else: print("Lugar inválido!")
-                        else:
-                            clicked = False
-                            for t in game.towers:
-                                if math.hypot(t.x - mx, t.y - my) < 20:
-                                    game.selected_tower = t; clicked = True; break
-                            if not clicked: game.selected_tower = None
-                    elif event.button == 3:
-                        if game.build_mode: game.build_mode = None 
-                        elif game.selected_tower:
-                            dist = math.hypot(game.selected_tower.x - mx, game.selected_tower.y - my)
-                            if dist < 20 and game.money >= game.selected_tower.level * 50:
-                                game.money -= game.selected_tower.level * 50
-                                game.selected_tower.upgrade()
+        # Atualiza lógica
+        if jogo.vidas > 0:
+            jogo.atualizar()
 
-        if game.lives > 0: game.update()
-
+        # Desenha
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        
-        if TEXTURES.get('background'): 
-            draw_sprite(TEXTURES['background'], LOGICAL_WIDTH/2, 225, 800, 450)
-        else: glColor3f(0.1, 0.1, 0.1); draw_rect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT)
-        
-        for e in game.enemies: e.draw()
-        for t in game.towers: t.draw(selected=(t == game.selected_tower))
-        for p in game.projectiles: p.draw()
-        for ft in game.floating_texts: ft.draw(font_float)
 
-        if game.build_mode:
-            mx, my = get_logical_mouse()
-            if my < PLAY_AREA_HEIGHT:
-                stats = TOWER_TYPES[game.build_mode]
-                is_valid = game.can_build(mx, my)
-                drawn = draw_sprite(TEXTURES.get(stats['img_name']), mx, my, 40, 40, alpha=0.5)
-                if not drawn:
-                    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                    glColor4f(*stats['cor'], 0.5); draw_rect(mx - 15, my - 15, 30, 30); glDisable(GL_BLEND)
-                glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                if is_valid: glColor4f(0, 0, 0, 0.3) 
-                else: glColor4f(1, 0, 0, 0.5) 
-                draw_circle_outline(mx, my, stats['range']); glDisable(GL_BLEND)
-
-        # --- HUD Topo ---
-        glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glColor4f(0, 0, 0, 0.5); draw_rect(0, 0, LOGICAL_WIDTH, 40); glDisable(GL_BLEND)
-        
-        draw_text(f"ONDA {game.wave}", LOGICAL_WIDTH - 140, 25, font_hud)
-        
-        icon_drawn = draw_sprite(TEXTURES.get('heart'), 30, 20, 24, 24)
-        if not icon_drawn: glColor3f(1, 0, 0); draw_rect(18, 8, 24, 24)
-        draw_text(f"{game.lives}", 60, 28, font_hud)
-
-        icon_drawn = draw_sprite(TEXTURES.get('coin'), 130, 20, 24, 24)
-        if not icon_drawn: glColor3f(1, 1, 0); draw_rect(118, 8, 24, 24)
-        draw_text(f"${game.money}", 160, 28, font_hud)
-
-        #--- DESENHO DO MENU DE BAIXO ---
-        if TEXTURES.get('menu_bottom'):
-            # Explicação da Matemática:
-            # X = 400 (Meio da tela)
-            # Y = 525 (Onde começa a UI [450] + Metade da altura da UI [75])
-            # Largura = 800, Altura = 150
-            draw_sprite(TEXTURES['menu_bottom'], LOGICAL_WIDTH/2, PLAY_AREA_HEIGHT + UI_HEIGHT/2, 800, 150)
+        # Background
+        if TEXTURAS.get('background'):
+            desenhar_sprite(TEXTURAS['background'], LARGURA_LOGICA / 2, 225, 800, 450)
         else:
-            # Fallback: Se a imagem não existir, desenha o cinza antigo
-            glColor3f(0.2, 0.2, 0.2); draw_rect(0, PLAY_AREA_HEIGHT, LOGICAL_WIDTH, UI_HEIGHT)
-        for tab_name, rect in game.tabs.items():
-            if tab_name == game.active_tab: glColor3f(0.5, 0.5, 0.8)
-            else: glColor3f(0.3, 0.3, 0.3)
-            draw_rect(rect.x, rect.y, rect.w, rect.h)
-            
-            # --- CENTRALIZAÇÃO DO TEXTO DA ABA ---
-            text_w, text_h = font.size(tab_name)
-            center_x = rect.x + (rect.w - text_w) / 2
-            center_y = rect.y + (rect.h / 2) + (text_h / 4)
-            draw_text(tab_name, center_x, center_y, font)
+            glColor3f(0.1, 0.1, 0.1)
+            desenhar_retangulo(0, 0, LARGURA_LOGICA, ALTURA_LOGICA)
 
-        for key, rect in current_tower_buttons.items():
-            if key == game.build_mode: glColor3f(0.8, 0.8, 0.8)
-            else: glColor3f(0.5, 0.5, 0.5)
-            draw_rect(rect.x, rect.y, rect.w, rect.h)
-            
-            # --- CENTRALIZAÇÃO DOS BOTÕES DE TORRE ---
-            name_txt = f"{TOWER_TYPES[key]['nome']}"
-            cost_txt = f"${TOWER_TYPES[key]['custo']}"
-            
-            nw, nh = font.size(name_txt)
-            cw, ch = font.size(cost_txt)
-            
-            draw_text(name_txt, rect.x + (rect.w - nw) / 2, rect.y + 12, font)
-            draw_text(cost_txt, rect.x + (rect.w - cw) / 2, rect.y + 28, font)
+        # Entidades
+        for inimigo in jogo.inimigos:
+            inimigo.desenhar()
 
-        # --- CENTRALIZAÇÃO BOTÃO PROX ONDA ---
-        glColor3f(0, 0.8, 0)
-        draw_rect(game.wave_button_rect.x, game.wave_button_rect.y, game.wave_button_rect.w, game.wave_button_rect.h)
-        wave_txt = "Prox Onda"
-        ww, wh = font.size(wave_txt)
-        draw_text(wave_txt, 
-                  game.wave_button_rect.x + (game.wave_button_rect.w - ww)/2, 
-                  game.wave_button_rect.y + 20, 
-                  font, 
-                  (0, 0, 0, 255))
+        for torre in jogo.torres:
+            torre.desenhar(selecionada=(torre == jogo.torre_selecionada))
 
-        if game.selected_tower:
-            t = game.selected_tower
-            if t.stats['nome'] == 'Estimulante':
-                info = f"{t.stats['nome']} (Lv {t.level}) | Buff: {t.stats['buff_factor']:.2f}x"
-            elif t.stats['nome'] == 'Fazenda':
-                info = f"{t.stats['nome']} (Lv {t.level}) | Renda: ${t.stats['income']}/5s"
-            else:
-                info = f"{t.stats['nome']} (Lv {t.level}) | Dano: {int(t.stats['dano'])}"
-            
-            draw_text(info, 350, PLAY_AREA_HEIGHT + 30, font, (255,255,255,255))
-            
-            # Botão de Upgrade
-            upgrade_text = f"Upgrade: ${t.level * 50} (Dir.)"
-            draw_text(upgrade_text, 350, PLAY_AREA_HEIGHT + 50, font)
+        for proj in jogo.projeteis:
+            proj.desenhar()
 
-            sell_val = int(t.total_investment * 0.75)
-            glColor3f(0.8, 0.2, 0.2)
-            draw_rect(game.sell_button_rect.x, game.sell_button_rect.y, game.sell_button_rect.w, game.sell_button_rect.h)
-            
-            # --- CENTRALIZAÇÃO BOTÃO VENDER ---
-            sell_txt = f"VENDER ${sell_val}"
-            sw, sh = font.size(sell_txt)
-            draw_text(sell_txt, game.sell_button_rect.x + (game.sell_button_rect.w - sw)/2, game.sell_button_rect.y + 20, font)
-            
-            if t.stats['nome'] != 'Fazenda':
-                
-                # Define as cores (Verde se ativo, Cinza se inativo)
-                c1 = (0, 0.8, 0) if t.strategy == 'PRIMEIRO' else (0.4, 0.4, 0.4)
-                c2 = (0, 0.8, 0) if t.strategy == 'MAIS VIDA' else (0.4, 0.4, 0.4)
-                c3 = (0, 0.8, 0) if t.strategy == 'ÚLTIMO' else (0.4, 0.4, 0.4)
-                
-                # Botão 1: Primeiro
-                glColor3f(*c1)
-                draw_rect(game.strat_btn_first.x, game.strat_btn_first.y, game.strat_btn_first.w, game.strat_btn_first.h)
-                tw, th = font_btn_small.size("Primeiro")
-                draw_text("Primeiro", game.strat_btn_first.x + (60-tw)/2, game.strat_btn_first.y + 12, font_btn_small)
+        for texto in jogo.textos_flutuantes:
+            texto.desenhar(fonte_float)
 
-                # Botão 2: Mais Vida
-                glColor3f(*c2)
-                draw_rect(game.strat_btn_hp.x, game.strat_btn_hp.y, game.strat_btn_hp.w, game.strat_btn_hp.h)
-                tw, th = font_btn_small.size("Mais Vida")
-                draw_text("Mais Vida", game.strat_btn_hp.x + (70-tw)/2, game.strat_btn_hp.y + 12, font_btn_small)
+        # Preview de construção
+        if jogo.modo_construcao:
+            mx, my = obter_mouse_logico()
+            if my < ALTURA_AREA_JOGO:
+                stats = TIPOS_TORRES[jogo.modo_construcao]
+                valido = jogo.pode_construir(mx, my)
 
-                # Botão 3: Último
-                glColor3f(*c3)
-                draw_rect(game.strat_btn_last.x, game.strat_btn_last.y, game.strat_btn_last.w, game.strat_btn_last.h)
-                tw, th = font_btn_small.size("Último")
-                draw_text("Último", game.strat_btn_last.x + (60-tw)/2, game.strat_btn_last.y + 12, font_btn_small)
+                if not desenhar_sprite(TEXTURAS.get(stats['img_name']), mx, my, 40, 40, alpha=0.5):
+                    glEnable(GL_BLEND)
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                    glColor4f(*stats['cor'], 0.5)
+                    desenhar_retangulo(mx - 15, my - 15, 30, 30)
+                    glDisable(GL_BLEND)
 
-            # --- BOTÕES DE ESTRATÉGIA (DANO APENAS) ---
-            if t.stats['role'] == 'DANO':
-                # Cores dos botões (Verde se ativo, Cinza se não)
-                c1 = (0, 0.8, 0) if t.strategy == 'PRIMEIRO' else (0.4, 0.4, 0.4)
-                c2 = (0, 0.8, 0) if t.strategy == 'MAIS VIDA' else (0.4, 0.4, 0.4)
-                c3 = (0, 0.8, 0) if t.strategy == 'ÚLTIMO' else (0.4, 0.4, 0.4)
-                
-                # Desenha Botão 1 (Primeiro)
-                glColor3f(*c1)
-                draw_rect(game.strat_btn_first.x, game.strat_btn_first.y, game.strat_btn_first.w, game.strat_btn_first.h)
-                draw_text("Primeiro", game.strat_btn_first.x + 5, game.strat_btn_first.y + 12, font_btn_small)
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                if valido:
+                    glColor4f(0, 0, 0, 0.3)
+                else:
+                    glColor4f(1, 0, 0, 0.5)
+                desenhar_circulo_contorno(mx, my, stats['range'])
+                glDisable(GL_BLEND)
 
-                # Desenha Botão 2 (Mais Vida)
-                glColor3f(*c2)
-                draw_rect(game.strat_btn_hp.x, game.strat_btn_hp.y, game.strat_btn_hp.w, game.strat_btn_hp.h)
-                draw_text("Mais Vida", game.strat_btn_hp.x + 5, game.strat_btn_hp.y + 12, font_btn_small)
+        # UI
+        desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena)
 
-                # Desenha Botão 3 (Último)
-                glColor3f(*c3)
-                draw_rect(game.strat_btn_last.x, game.strat_btn_last.y, game.strat_btn_last.w, game.strat_btn_last.h)
-                draw_text("Último", game.strat_btn_last.x + 10, game.strat_btn_last.y + 12, font_btn_small)
+        # Game Over
+        if jogo.vidas <= 0:
+            desenhar_texto("GAME OVER", LARGURA_LOGICA / 2, ALTURA_LOGICA / 2, fonte_hud)
 
-        if game.lives <= 0: draw_text("GAME OVER", LOGICAL_WIDTH/2, LOGICAL_HEIGHT/2, font)
-        pygame.display.flip(); clock.tick(60)
+        pygame.display.flip()
+        relogio.tick(60)
+
     pygame.quit()
 
-if __name__ == "__main__": main()
+
+if __name__ == "__main__":
+    main()
