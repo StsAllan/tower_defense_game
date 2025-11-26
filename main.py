@@ -46,31 +46,44 @@ PATH = [(0, 100), (200, 100), (200, 300), (500, 300), (500, 100), (700, 100), (7
 
 # --- Funções de Tela ---
 def update_viewport(window_w, window_h):
+    """Recalcula a área de jogo e a escala quando a janela muda de tamanho"""
     global viewport_x, viewport_y, viewport_w, viewport_h, scale_ratio
+    
     target_aspect = LOGICAL_WIDTH / LOGICAL_HEIGHT
     window_aspect = window_w / window_h
-
+    
     if window_aspect > target_aspect:
+        # Janela mais larga (barras nas laterais)
         viewport_h = window_h
         viewport_w = int(window_h * target_aspect)
         viewport_y = 0
         viewport_x = int((window_w - viewport_w) / 2)
     else:
+        # Janela mais alta (barras em cima/baixo)
         viewport_w = window_w
         viewport_h = int(window_w / target_aspect)
         viewport_x = 0
         viewport_y = int((window_h - viewport_h) / 2)
-
+        
     scale_ratio = LOGICAL_WIDTH / viewport_w
+    
+    # Atualiza a área de desenho do OpenGL
     glViewport(viewport_x, viewport_y, viewport_w, viewport_h)
 
 
 def get_logical_mouse():
+    """Traduz o mouse real da tela para o mouse do jogo (800x600)"""
     raw_x, raw_y = pygame.mouse.get_pos()
-    window_h = pygame.display.get_surface().get_height()
-    margin_top = (window_h - viewport_h) / 2
+    
+    # CORREÇÃO: Usamos diretamente viewport_x e viewport_y.
+    # Essas variáveis já guardam a posição exata da barra preta calculada no resize.
+    # Isso garante que o mouse bata 100% com o desenho do OpenGL.
+    
     game_x = (raw_x - viewport_x) * scale_ratio
-    game_y = (raw_y - margin_top) * scale_ratio
+    game_y = (raw_y - viewport_y) * scale_ratio
+    
+    return game_x, game_y
+    
     return game_x, game_y
 
 
@@ -512,7 +525,7 @@ class Game:
                 if self.wave >= 3:
                     cycles = (self.wave - 3) // 3
                     special_chance = 0.05 + (cycles * 0.05)
-                    special_chance = min(special_chance, 0.50)
+                    special_chance = min(special_chance, 0.80)
                     
                     if random.random() < special_chance:
                         if random.random() < 0.5:
@@ -676,18 +689,25 @@ def main():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT: running = False
-
+            
+            # --- ADICIONE ESTE BLOCO ---
             if event.type == VIDEORESIZE:
+                # Atualiza a tela e recalcula a escala
                 screen = pygame.display.set_mode((event.w, event.h), DOUBLEBUF | OPENGL | RESIZABLE)
                 update_viewport(event.w, event.h)
-                glMatrixMode(GL_PROJECTION);
+                
+                # Recarrega a projeção 2D
+                glMatrixMode(GL_PROJECTION)
                 glLoadIdentity()
                 gluOrtho2D(0, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0)
                 glMatrixMode(GL_MODELVIEW)
+                
+                # Recarrega texturas (necessário ao recriar contexto OpenGL)
                 game.load_assets()
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                mx, my = get_logical_mouse()
+                mx, my = get_logical_mouse() 
+                
                 if my > PLAY_AREA_HEIGHT:
                     if event.button == 1:
                         # 1. Abas
