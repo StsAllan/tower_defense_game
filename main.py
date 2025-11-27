@@ -9,17 +9,13 @@ from entidades import Torre
 
 
 def processar_eventos(jogo, evento, mx, my):
-    """Processa eventos de mouse"""
     if my > ALTURA_AREA_JOGO:
-        # Cliques na UI
         if evento.button == 1:
-            # Clique nas abas
             for nome_aba, rect in jogo.abas.items():
                 if rect.collidepoint(mx, my):
                     jogo.aba_ativa = nome_aba
                     jogo.modo_construcao = None
 
-            # Clique nos botões de torres
             botoes_torres = {}
             x_offset = 10
             for chave, dados in TIPOS_TORRES.items():
@@ -34,11 +30,9 @@ def processar_eventos(jogo, evento, mx, my):
                         jogo.modo_construcao = chave
                         jogo.torre_selecionada = None
 
-            # Botão de onda
             if jogo.btn_onda.collidepoint(mx, my):
                 jogo.iniciar_onda()
 
-            # Botões da torre selecionada
             if jogo.torre_selecionada:
                 if jogo.btn_vender.collidepoint(mx, my):
                     reembolso = int(jogo.torre_selecionada.investimento_total * 0.75)
@@ -55,7 +49,6 @@ def processar_eventos(jogo, evento, mx, my):
                     jogo.torre_selecionada.estrategia = 'ÚLTIMO'
 
     else:
-        # Cliques na área de jogo
         if evento.button == 1:
             if jogo.modo_construcao:
                 if jogo.pode_construir(mx, my):
@@ -83,8 +76,6 @@ def processar_eventos(jogo, evento, mx, my):
 
 
 def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
-    """Desenha interface do usuário"""
-    # HUD superior
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glColor4f(0, 0, 0, 0.5)
@@ -93,7 +84,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
 
     desenhar_texto(f"ONDA {jogo.onda}", LARGURA_LOGICA - 140, 25, fonte_hud)
 
-    # Ícone de vida
     if desenhar_sprite(TEXTURAS.get('heart'), 30, 20, 24, 24):
         pass
     else:
@@ -101,7 +91,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
         desenhar_retangulo(18, 8, 24, 24)
     desenhar_texto(f"{jogo.vidas}", 60, 28, fonte_hud)
 
-    # Ícone de moeda
     if desenhar_sprite(TEXTURAS.get('coin'), 130, 20, 24, 24):
         pass
     else:
@@ -109,7 +98,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
         desenhar_retangulo(118, 8, 24, 24)
     desenhar_texto(f"${jogo.dinheiro}", 160, 28, fonte_hud)
 
-    # Menu inferior
     if TEXTURAS.get('menu_bottom'):
         desenhar_sprite(
             TEXTURAS['menu_bottom'],
@@ -134,7 +122,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
         center_y = rect.y + (rect.h / 2) + (text_h / 4)
         desenhar_texto(nome_aba, center_x, center_y, fonte)
 
-    # Botões de torres
     x_offset = 10
     for chave, dados in TIPOS_TORRES.items():
         if dados['role'] == jogo.aba_ativa:
@@ -157,7 +144,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
 
             x_offset += 110
 
-    # Botão de onda
     glColor3f(0, 0.8, 0)
     desenhar_retangulo(jogo.btn_onda.x, jogo.btn_onda.y, jogo.btn_onda.w, jogo.btn_onda.h)
     onda_txt = "Prox Onda"
@@ -170,7 +156,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
         (0, 0, 0, 255)
     )
 
-    # Info da torre selecionada
     if jogo.torre_selecionada:
         t = jogo.torre_selecionada
 
@@ -184,7 +169,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
         desenhar_texto(info, 350, ALTURA_AREA_JOGO + 30, fonte, (255, 255, 255, 255))
         desenhar_texto(f"Upgrade: ${t.nivel * 50} (Dir.)", 350, ALTURA_AREA_JOGO + 50, fonte)
 
-        # Botão vender
         valor_venda = int(t.investimento_total * 0.75)
         glColor3f(0.8, 0.2, 0.2)
         desenhar_retangulo(jogo.btn_vender.x, jogo.btn_vender.y, jogo.btn_vender.w, jogo.btn_vender.h)
@@ -193,7 +177,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
         sw, sh = fonte.size(vender_txt)
         desenhar_texto(vender_txt, jogo.btn_vender.x + (jogo.btn_vender.w - sw) / 2, jogo.btn_vender.y + 20, fonte)
 
-        # Botões de estratégia
         if t.stats['nome'] != 'Fazenda':
             c1 = (0, 0.8, 0) if t.estrategia == 'PRIMEIRO' else (0.4, 0.4, 0.4)
             c2 = (0, 0.8, 0) if t.estrategia == 'MAIS VIDA' else (0.4, 0.4, 0.4)
@@ -216,7 +199,6 @@ def desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena):
 
 
 def main():
-    """Função principal"""
     pygame.init()
     pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
 
@@ -229,13 +211,11 @@ def main():
     gluOrtho2D(0, LARGURA_LOGICA, ALTURA_LOGICA, 0)
     glMatrixMode(GL_MODELVIEW)
 
-    # Fontes
     fonte = pygame.font.SysFont('Arial', 16)
     fonte_hud = pygame.font.SysFont('Arial', 24, bold=True)
     fonte_float = pygame.font.SysFont('Arial', 14, bold=True)
     fonte_pequena = pygame.font.SysFont('Arial', 12, bold=True)
 
-    # Inicializa jogo e música
     jogo = Jogo()
     musica = GerenciadorMusica(pygame.mixer)
     musica.iniciar()
@@ -244,7 +224,6 @@ def main():
     rodando = True
 
     while rodando:
-        # Atualiza música
         if pygame.mixer.get_init():
             if jogo.onda_ativa:
                 musica.trocar('onda')
@@ -252,7 +231,6 @@ def main():
                 musica.trocar('normal')
             musica.atualizar()
 
-        # Eventos
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 rodando = False
@@ -270,21 +248,17 @@ def main():
                 mx, my = obter_mouse_logico()
                 processar_eventos(jogo, evento, mx, my)
 
-        # Atualiza lógica
         if jogo.vidas > 0:
             jogo.atualizar()
 
-        # Desenha
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        # Background
         if TEXTURAS.get('background'):
             desenhar_sprite(TEXTURAS['background'], LARGURA_LOGICA / 2, 225, 800, 450)
         else:
             glColor3f(0.1, 0.1, 0.1)
             desenhar_retangulo(0, 0, LARGURA_LOGICA, ALTURA_LOGICA)
 
-        # Entidades
         for inimigo in jogo.inimigos:
             inimigo.desenhar()
 
@@ -297,7 +271,6 @@ def main():
         for texto in jogo.textos_flutuantes:
             texto.desenhar(fonte_float)
 
-        # Preview de construção
         if jogo.modo_construcao:
             mx, my = obter_mouse_logico()
             if my < ALTURA_AREA_JOGO:
@@ -320,10 +293,8 @@ def main():
                 desenhar_circulo_contorno(mx, my, stats['range'])
                 glDisable(GL_BLEND)
 
-        # UI
         desenhar_ui(jogo, fonte, fonte_hud, fonte_pequena)
 
-        # Game Over
         if jogo.vidas <= 0:
             desenhar_texto("GAME OVER", LARGURA_LOGICA / 2, ALTURA_LOGICA / 2, fonte_hud)
 

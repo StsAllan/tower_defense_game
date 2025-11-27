@@ -5,19 +5,16 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from config import LARGURA_LOGICA, ALTURA_LOGICA
 
-# === VARIÁVEIS GLOBAIS DE VIEWPORT ===
 viewport_x = 0
 viewport_y = 0
 viewport_w = LARGURA_LOGICA
 viewport_h = ALTURA_LOGICA
 escala = 1.0
 
-# === DICIONÁRIO DE TEXTURAS ===
 TEXTURAS = {}
 
 
 def atualizar_viewport(largura_janela, altura_janela):
-    """Recalcula área de jogo quando janela muda"""
     global viewport_x, viewport_y, viewport_w, viewport_h, escala
 
     aspecto_alvo = LARGURA_LOGICA / ALTURA_LOGICA
@@ -39,7 +36,6 @@ def atualizar_viewport(largura_janela, altura_janela):
 
 
 def obter_mouse_logico():
-    """Converte posição do mouse para coordenadas lógicas"""
     raw_x, raw_y = pygame.mouse.get_pos()
     jogo_x = (raw_x - viewport_x) * escala
     jogo_y = (raw_y - viewport_y) * escala
@@ -47,7 +43,6 @@ def obter_mouse_logico():
 
 
 def dist_ponto_segmento(px, py, x1, y1, x2, y2):
-    """Calcula distância de ponto até segmento de linha"""
     l2 = (x1 - x2) ** 2 + (y1 - y2) ** 2
     if l2 == 0:
         return math.hypot(px - x1, py - y1)
@@ -62,7 +57,6 @@ def dist_ponto_segmento(px, py, x1, y1, x2, y2):
 
 
 def carregar_textura(nome_arquivo):
-    """Carrega textura PNG e retorna ID OpenGL"""
     caminho = os.path.join("assets", nome_arquivo)
     if not os.path.exists(caminho):
         return None
@@ -87,7 +81,6 @@ def carregar_textura(nome_arquivo):
 
 
 def desenhar_sprite(tex_id, x, y, largura, altura, cor=(1, 1, 1), alpha=1.0):
-    """Desenha sprite com textura"""
     if tex_id is None:
         return False
 
@@ -117,7 +110,6 @@ def desenhar_sprite(tex_id, x, y, largura, altura, cor=(1, 1, 1), alpha=1.0):
 
 
 def desenhar_texto(texto, x, y, fonte, cor=(255, 255, 255, 255)):
-    """Desenha texto usando pygame font"""
     superficie = fonte.render(texto, True, cor)
     superficie = pygame.transform.flip(superficie, False, True)
     dados = pygame.image.tostring(superficie, "RGBA", 1)
@@ -134,7 +126,6 @@ def desenhar_texto(texto, x, y, fonte, cor=(255, 255, 255, 255)):
 
 
 def desenhar_retangulo(x, y, largura, altura):
-    """Desenha retângulo preenchido"""
     glBegin(GL_QUADS)
     glVertex2f(x, y)
     glVertex2f(x + largura, y)
@@ -144,7 +135,6 @@ def desenhar_retangulo(x, y, largura, altura):
 
 
 def desenhar_circulo(x, y, raio):
-    """Desenha círculo preenchido"""
     glBegin(GL_TRIANGLE_FAN)
     glVertex2f(x, y)
     for i in range(361):
@@ -154,7 +144,6 @@ def desenhar_circulo(x, y, raio):
 
 
 def desenhar_circulo_contorno(x, y, raio):
-    """Desenha contorno de círculo"""
     glBegin(GL_LINE_LOOP)
     for i in range(360):
         angulo = math.radians(i)

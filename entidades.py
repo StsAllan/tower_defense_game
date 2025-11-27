@@ -5,7 +5,6 @@ from config import CAMINHO, TIPOS_TORRES
 
 
 class TextoFlutuante:
-    """Texto que sobe e desaparece"""
 
     def __init__(self, x, y, texto, cor=(0.2, 1.0, 0.2)):
         self.x, self.y = x, y
@@ -32,7 +31,6 @@ class TextoFlutuante:
 
 
 class Projetil:
-    """Projétil disparado por torres"""
 
     def __init__(self, x, y, alvo, dano, cor, slow_factor=1.0, slow_time=0):
         self.x, self.y = x, y
@@ -69,7 +67,6 @@ class Projetil:
 
 
 class Inimigo:
-    """Inimigo que segue o caminho"""
 
     def __init__(self, nivel_onda, tipo_inimigo='normal'):
         self.indice_caminho = 0
@@ -135,7 +132,6 @@ class Inimigo:
         return False
 
     def desenhar(self):
-        # Define frames e cor de fallback
         if self.tipo_inimigo == 'tank':
             frames_key = 'enemy_hp_frames'
             cor_fallback = (1, 0.5, 0)
@@ -152,7 +148,6 @@ class Inimigo:
         if self.timer_lento > 0:
             cor = (0.3, 0.3, 1.0)
 
-        # Desenha sprite ou círculo
         if frames_inimigo:
             idx = int(self.indice_frame) % len(frames_inimigo)
             tamanho = 30
@@ -167,14 +162,12 @@ class Inimigo:
             glColor3f(*cor_desenho)
             desenhar_circulo(self.x, self.y, self.raio)
 
-        # Barra de vida
         glColor3f(1, 0, 0)
         razao = max(0, self.vida / self.vida_max)
         desenhar_retangulo(self.x - 10, self.y - 20, 20 * razao, 4)
 
 
 class Torre:
-    """Torre que ataca inimigos"""
 
     def __init__(self, x, y, chave_tipo):
         self.x, self.y = x, y
@@ -188,7 +181,6 @@ class Torre:
         self.estrategia = 'PRIMEIRO'  # PRIMEIRO, ÚLTIMO, MAIS VIDA
 
     def melhorar(self):
-        """Faz upgrade da torre"""
         custo = self.nivel * 50
         self.nivel += 1
 
@@ -223,7 +215,6 @@ class Torre:
             self.timer_cooldown -= 1
             return
 
-        # Torre de renda
         if self.stats.get('income', 0) > 0:
             if ref_jogo.onda_ativa:
                 quantidade = self.stats['income']
@@ -234,7 +225,6 @@ class Torre:
                 )
             return
 
-        # Filtra inimigos no alcance
         inimigos_no_alcance = []
         for inimigo in inimigos:
             dist = math.hypot(inimigo.x - self.x, inimigo.y - self.y)
@@ -275,14 +265,12 @@ class Torre:
             glColor3f(*self.stats['cor'])
             desenhar_retangulo(self.x - 15, self.y - 15, 30, 30)
 
-        # Ícone de buff
         if self.esta_buffada:
             icone_ok = desenhar_sprite(TEXTURAS.get('buff_icon'), self.x, self.y - 30, 20, 20)
             if not icone_ok:
                 glColor3f(1, 1, 0)
                 desenhar_retangulo(self.x - 5, self.y - 35, 10, 10)
 
-        # Contorno se selecionada
         if selecionada:
             glColor3f(0, 0, 0)
             desenhar_circulo_contorno(self.x, self.y, self.stats['range'])

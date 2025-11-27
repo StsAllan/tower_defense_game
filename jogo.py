@@ -19,7 +19,6 @@ class GerenciadorMusica:
         self.contador_fade = 0
 
     def iniciar(self):
-        """Inicia música normal"""
         if os.path.exists(self.caminhos['normal']):
             try:
                 self.mixer.music.load(self.caminhos['normal'])
@@ -30,7 +29,6 @@ class GerenciadorMusica:
                 print(f"Erro ao carregar música: {e}")
 
     def trocar(self, tipo_musica):
-        """Troca para tipo especificado"""
         if self.atual != tipo_musica and not self.mudando:
             caminho = self.caminhos.get(tipo_musica)
             if caminho and os.path.exists(caminho):
@@ -43,7 +41,6 @@ class GerenciadorMusica:
                     print(f"Erro ao trocar música: {e}")
 
     def atualizar(self):
-        """Atualiza estado do fade"""
         if self.mudando:
             self.contador_fade -= 1
             if self.contador_fade <= 0:
@@ -60,7 +57,6 @@ class GerenciadorMusica:
 
 
 class Jogo:
-    """Classe principal do jogo"""
 
     def __init__(self):
         self.dinheiro = DINHEIRO_INICIAL
@@ -76,16 +72,13 @@ class Jogo:
         self.timer_spawn = 0
         self.modo_construcao = None
 
-        # Botões
         self.btn_vender = Rect(650, ALTURA_LOGICA - 60, 120, 40)
         self.btn_onda = Rect(650, ALTURA_LOGICA - 130, 120, 40)
 
-        # Botões de estratégia
         self.btn_primeiro = Rect(350, ALTURA_AREA_JOGO + 80, 60, 25)
         self.btn_mais_vida = Rect(415, ALTURA_AREA_JOGO + 80, 70, 25)
         self.btn_ultimo = Rect(490, ALTURA_AREA_JOGO + 80, 60, 25)
 
-        # Abas
         self.aba_ativa = 'DANO'
         self.abas = {
             'DANO': Rect(10, ALTURA_AREA_JOGO + 10, 100, 30),
@@ -95,7 +88,6 @@ class Jogo:
         self.carregar_assets()
 
     def carregar_assets(self):
-        """Carrega todas as texturas"""
         frames_normal = []
         frames_tank = []
         frames_speed = []
