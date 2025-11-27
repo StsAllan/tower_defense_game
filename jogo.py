@@ -111,18 +111,15 @@ class Jogo:
                 frames_tank.append(tex)
         TEXTURAS['enemy_hp_frames'] = frames_tank
 
-        # Inimigos speed
         for i in range(4):
             tex = carregar_textura(f'enemy_speed_{i}.png')
             if tex:
                 frames_speed.append(tex)
         TEXTURAS['enemy_speed_frames'] = frames_speed
 
-        # Torres
         for chave, dados in TIPOS_TORRES.items():
             TEXTURAS[dados['img_name']] = carregar_textura(dados['img_name'])
 
-        # UI
         TEXTURAS['background'] = carregar_textura('background.png')
         TEXTURAS['buff_icon'] = carregar_textura('buff_icon.png')
         TEXTURAS['heart'] = carregar_textura('heart.png')
@@ -130,8 +127,6 @@ class Jogo:
         TEXTURAS['menu_bottom'] = carregar_textura('menu.png')
 
     def pode_construir(self, x, y):
-        """Verifica se pode construir torre na posição"""
-        # Checa distância do caminho
         for i in range(len(CAMINHO) - 1):
             p1 = CAMINHO[i]
             p2 = CAMINHO[i + 1]
@@ -139,7 +134,6 @@ class Jogo:
             if dist < RAIO_BLOQUEIO_CAMINHO:
                 return False
 
-        # Checa distância de outras torres
         for torre in self.torres:
             dist = math.hypot(x - torre.x, y - torre.y)
             if dist < DISTANCIA_MIN_TORRES:
@@ -148,7 +142,6 @@ class Jogo:
         return True
 
     def iniciar_onda(self):
-        """Inicia próxima onda"""
         if not self.onda_ativa:
             self.onda += 1
             quantidade_base = 5 + self.onda
@@ -158,8 +151,6 @@ class Jogo:
             self.onda_ativa = True
 
     def atualizar(self):
-        """Atualiza lógica do jogo"""
-        # Spawn de inimigos
         if self.onda_ativa and self.inimigos_para_spawnar > 0:
             self.timer_spawn += 1
             delay_spawn = max(10, 40 - (self.onda * 2))
@@ -182,7 +173,6 @@ class Jogo:
         elif self.onda_ativa and len(self.inimigos) == 0 and self.inimigos_para_spawnar == 0:
             self.onda_ativa = False
 
-        # Move inimigos
         for inimigo in self.inimigos[:]:
             if inimigo.mover():
                 self.vidas -= 1
@@ -193,7 +183,6 @@ class Jogo:
                 inimigo.ativo = False
                 self.inimigos.remove(inimigo)
 
-        # Atualiza buffs
         for torre in self.torres:
             torre.resetar_buffs()
 
@@ -206,17 +195,14 @@ class Jogo:
                         if dist <= torre.stats['range']:
                             alvo.aplicar_buff(fator_buff)
 
-        # Atualiza torres
         for torre in self.torres:
             torre.atualizar(self.inimigos, self.projeteis, self)
 
-        # Atualiza projéteis
         for proj in self.projeteis[:]:
             proj.atualizar()
             if not proj.ativo:
                 self.projeteis.remove(proj)
 
-        # Atualiza textos flutuantes
         for texto in self.textos_flutuantes[:]:
             texto.atualizar()
             if not texto.ativo:
